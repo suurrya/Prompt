@@ -16,14 +16,17 @@ import os
 import sys
 
 from dotenv import load_dotenv
-from smolagents import ToolCallingAgent, OpenAIServerModel
+from smolagents import ToolCallingAgent
 
+# Allow running from any working directory.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# Custom wrapper for the Hugging Face Inference Router
+from model_wrapper import HFRouterModel
 from tools import ALL_TOOLS
 from project_2_chain_of_thought.prompts import SYSTEM_PROMPT
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 
 class ITHelpdeskAgent:
@@ -36,17 +39,19 @@ class ITHelpdeskAgent:
 
     EXPERIMENT_NAME = "Static Chain-of-Thought"
 
-    def __init__(self, model_id: str = "gpt-4o-mini", verbose: bool = False):
-        model = OpenAIServerModel(
+    def __init__(self, model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct", verbose: bool = False):
+        model = HFRouterModel(
             model_id=model_id,
-            api_key=os.environ["OPENAI_API_KEY"],
+            api_base="https://router.huggingface.co/v1",
+            api_key=os.environ["HUGGING_FACE_API_KEY"],
         )
-        self._agent = OpenAIServerModel(
+        self._agent = ToolCallingAgent(
             tools=ALL_TOOLS,
             model=model,
-            system_prompt=SYSTEM_PROMPT,
+            max_steps=2,
             verbosity_level=1 if verbose else 0,
         )
+        self._agent.prompt_templates["system_prompt"] = SYSTEM_PROMPT
         self.verbose = verbose
 
     def __call__(self, user_query: str) -> str:

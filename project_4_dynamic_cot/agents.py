@@ -22,14 +22,18 @@ import os
 import sys
 
 from dotenv import load_dotenv
-from smolagents import ToolCallingAgent, OpenAIServerModel
+from smolagents import ToolCallingAgent
 
+# Allow running from any working directory.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# Custom wrapper for the Hugging Face Inference Router
+from model_wrapper import HFRouterModel
 from tools import ALL_TOOLS
 from project_4_dynamic_cot.prompts import build_system_prompt
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+
 
 
 class ITHelpdeskAgent:
@@ -45,17 +49,18 @@ class ITHelpdeskAgent:
 
     def __init__(
         self,
-        model_id: str = "gpt-4o-mini",
-        top_k_examples: int = 3,
+        model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct",
+        top_k_examples: int = 2,
         verbose: bool = False,
     ):
         self._model_id = model_id
         self._top_k = top_k_examples
-        self._api_key = os.environ["OPENAI_API_KEY"]
+        self._api_key = os.environ["HUGGING_FACE_API_KEY"]
         self.verbose = verbose
 
-        self._model = OpenAIServerModel(
+        self._model = HFRouterModel(
             model_id=model_id,
+            api_base="https://router.huggingface.co/v1",
             api_key=self._api_key,
         )
 
@@ -79,12 +84,14 @@ class ITHelpdeskAgent:
             print(f"[{self.EXPERIMENT_NAME}] Prompt chars: {len(dynamic_prompt)}")
 
         # Step 3: Fresh agent with the tailored CoT prompt
-        agent = OpenAIServerModel(
+        agent = ToolCallingAgent(
             tools=ALL_TOOLS,
             model=self._model,
-            system_prompt=dynamic_prompt,
+            max_steps=2,
             verbosity_level=1 if self.verbose else 0,
         )
+        agent.prompt_templates["system_prompt"] = dynamic_prompt
+        self._last_agent = agent  # expose for log inspection by the evaluator
 
         # Step 4: Execute
         return agent.run(user_query)

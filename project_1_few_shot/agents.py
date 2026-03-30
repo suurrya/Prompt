@@ -13,20 +13,21 @@ No runtime logic, no dynamic selection. The model must generalize from the
 fixed examples in SYSTEM_PROMPT regardless of how similar they are to the
 actual incoming query.
 """
-
 import os
 import sys
 
 from dotenv import load_dotenv
-from smolagents import ToolCallingAgent, OpenAIServerModel
+from smolagents import ToolCallingAgent
 
 # Allow running from any working directory.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# Custom wrapper for the Hugging Face Inference Router
+from model_wrapper import HFRouterModel
 from tools import ALL_TOOLS
 from project_1_few_shot.prompts import SYSTEM_PROMPT
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 
 class ITHelpdeskAgent:
@@ -39,17 +40,21 @@ class ITHelpdeskAgent:
 
     EXPERIMENT_NAME = "Static Few-Shot"
 
-    def __init__(self, model_id: str = "gpt-4o-mini", verbose: bool = False):
-        model = OpenAIServerModel(
+    def __init__(self, model_id: str = "Qwen/Qwen2.5-Coder-7B-Instruct", verbose: bool = False):
+        model = HFRouterModel(
             model_id=model_id,
-            api_key=os.environ["OPENAI_API_KEY"],
+            api_base="https://router.huggingface.co/v1",
+            api_key=os.environ["HUGGING_FACE_API_KEY"],
         )
-        self._agent = OpenAIServerModel(
+        self._agent = ToolCallingAgent(
             tools=ALL_TOOLS,
             model=model,
-            system_prompt=SYSTEM_PROMPT,
+            max_steps=2,
             verbosity_level=1 if verbose else 0,
         )
+        # Override only the system_prompt key so the other required keys
+        # (planning, managed_agent, final_answer, …) stay at their defaults.
+        self._agent.prompt_templates["system_prompt"] = SYSTEM_PROMPT
         self.verbose = verbose
 
     # ------------------------------------------------------------------

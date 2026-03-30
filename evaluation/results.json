@@ -1,0 +1,88 @@
+{
+  "run_at": "2026-03-30T17:41:15.345364",
+  "experiments": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "test_case_count": 1,
+  "results": [
+    {
+      "experiment_id": 1,
+      "name": "Static Few-Shot",
+      "accuracy": 1.0,
+      "correct": 1,
+      "total": 1,
+      "results": [
+        {
+          "id": "TC-001",
+          "query": "I forgot my password and I'm locked out of my computer.",
+          "expected": "reset_password",
+          "actual": "reset_password",
+          "correct": true,
+          "latency_s": 6.78,
+          "response": "To reset your forgotten password and regain access to your computer, you can try the following methods:\n\n1. **Email Method**:\n   - Go to the \"Password reset\" or \"Forgotten password\" section of your computer login page.\n   - Enter your registered email address associated with your account.\n   - Click on the \"Reset password via email\" button.\n   - Check your spam/junk folder for the email from the system.\n   - Follow the instructions provided in the email to set a new password.\n\n2. **Phone Method*",
+          "error": null
+        }
+      ]
+    },
+    {
+      "experiment_id": 2,
+      "name": "Static Chain-of-Thought",
+      "accuracy": 1.0,
+      "correct": 1,
+      "total": 1,
+      "results": [
+        {
+          "id": "TC-001",
+          "query": "I forgot my password and I'm locked out of my computer.",
+          "expected": "reset_password",
+          "actual": "reset_password",
+          "correct": true,
+          "latency_s": 8.66,
+          "response": "I'm sorry to hear that you're having trouble logging into your computer because you forgot your password. While I can't directly help you reset the password through our system due to the lockout, I'll guide you on what steps to take:\n\n1. **Contact IT Support**: If you're at work or school, the first step is to contact your institution's IT support team. They should be able to unlock your account and give you guidance on how to proceed with resetting your password.\n\n2. **Use Password Recovery Opt",
+          "error": null
+        }
+      ]
+    },
+    {
+      "experiment_id": 3,
+      "name": "Dynamic Few-Shot",
+      "accuracy": 1.0,
+      "correct": 1,
+      "total": 1,
+      "results": [
+        {
+          "id": "TC-001",
+          "query": "I forgot my password and I'm locked out of my computer.",
+          "expected": "reset_password",
+          "actual": "reset_password",
+          "correct": true,
+          "latency_s": 7.02,
+          "response": "I'm sorry you're having trouble accessing your computer due to a forgotten password.\n\nPlease follow these steps to reset your password:\n\n1. **Contact Support**: The best course of action is to contact the support team for your computer or device provider. They can help guide you through the process using your account information and contact details.\n   \n2. **Password Reset Email/SMS**: If you have set up email/sms-based password recovery for your account, they should send you an instruction or a",
+          "error": null
+        }
+      ]
+    },
+    {
+      "experiment_id": 4,
+      "name": "Dynamic Chain-of-Thought",
+      "accuracy": 1.0,
+      "correct": 1,
+      "total": 1,
+      "results": [
+        {
+          "id": "TC-001",
+          "query": "I forgot my password and I'm locked out of my computer.",
+          "expected": "reset_password",
+          "actual": "reset_password",
+          "correct": true,
+          "latency_s": 11.43,
+          "response": "I'm sorry to hear that you're having trouble with your password and are locked out of your computer. Here are some steps you can follow to reset your password:\n\n### For Desktop Computers:\n1. **Restart Your Computer**: Sometimes, simply restarting your computer can clear the login issue.\n   - Shut down your computer and turn it back on.\n\n2. **Access Recovery Mode**:\n   - On many Windows computers, hold down the `Shift` key while clicking on \"Restart\" from the Start menu.\n   - On macOS computers, ",
+          "error": null
+        }
+      ]
+    }
+  ]
+}
