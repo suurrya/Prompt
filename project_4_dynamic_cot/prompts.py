@@ -1,357 +1,399 @@
 """
 project_4_dynamic_cot/prompts.py
 ==================================
-Dynamic Chain-of-Thought (CoT) Prompting  ← most advanced strategy
---------------------------------------------------------------------
-Combines the two enhancements from Experiments 2 and 3:
+Strategy: Dynamic Chain-of-Thought (CoT) Prompting  ← most advanced
+------------------------------------------------------------------
+Philosophy: the BEST of both worlds — examples are selected dynamically
+(relevance from Exp 3) AND each one includes a full reasoning trace
+(depth from Exp 2).
 
-  • DYNAMIC selection — at call-time, the top-k most relevant examples are
-    chosen via TF-IDF cosine similarity (same mechanism as Experiment 3).
+Design decisions:
+  • COT_EXAMPLE_DATABASE holds 28 richly annotated entries. Each has:
+      - query   : the example user message
+      - thought : multi-line reasoning that works through the decision
+      - tool_call: the correct action(s)
+  • top_k=3 (not 4) because CoT examples are 3× longer than bare pairs —
+    fewer examples keeps the prompt within a sensible context window.
+  • The prompt template includes a "DIAGNOSTIC QUESTIONS" block that
+    primes the model to emit its own reasoning trace even for queries
+    that don't perfectly match any stored example.
+  • Security examples explicitly model the two-step create→escalate
+    sequence with reasoning that explains WHY both are needed.
+  • Outage examples model the check_system_status → defer/ticket split.
 
-  • CHAIN-OF-THOUGHT traces — each example includes a "Thought:" section
-    that models the step-by-step reasoning process (same structure as
-    Experiment 2).
-
-Expected outcome: the model receives examples that are BOTH semantically
-close to the actual query AND demonstrate explicit deliberative reasoning,
-giving it the best possible scaffold for accurate tool selection.
+Hypothesis: combining dynamic selection with CoT traces gives the highest
+accuracy because the model sees BOTH a close-matching example AND a
+demonstration of the reasoning process required to handle edge cases.
 """
 
 from __future__ import annotations
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
 
-# ---------------------------------------------------------------------------
-# CoT Example Database
-# Each entry: query text  +  a Thought: trace  +  the final tool call.
-# ---------------------------------------------------------------------------
+# ── CoT Example Database ─────────────────────────────────────────────────────
+
 COT_EXAMPLE_DATABASE: list[dict] = [
-    # Auth / Passwords
+    # ── AUTH ──────────────────────────────────────────────────────────────
     {
-        "query": "I forgot my password and can't log in",
+        "query": "I forgot my password and I'm locked out of my computer",
         "thought": (
-            "The user cannot authenticate — this is a credential issue. "
-            "The self-service portal requires an active session, so KB guidance is not enough. "
-            "I must initiate a password reset directly via the reset_password tool."
+            "The user cannot authenticate — this is an active lockout.\n"
+            "  • The self-service portal requires a valid session, so KB guidance is useless.\n"
+            "  • reset_password is the direct action. Method = email (standard).\n"
+            "  • No outage check needed; this is user-specific, not service-wide."
         ),
-        "tool_call": 'reset_password(user_email="<user_email>", method="email")',
+        "tool_call": 'reset_password(user_email="<email>", method="email")',
     },
     {
-        "query": "My account is locked after too many wrong password attempts",
+        "query": "My account keeps getting locked after a few failed attempts",
         "thought": (
-            "Account lockout after repeated failures is a standard security policy response. "
-            "The resolution is unlocking via a password reset — the user cannot self-serve "
-            "because they are already locked out of the portal."
+            "Repeated lockouts suggest either a forgotten password or a device\n"
+            "  caching stale credentials. Either way, the fix is a reset.\n"
+            "  • reset_password via sms for higher assurance on repeated lockouts.\n"
+            "  • After reset, the user should clear saved credentials."
         ),
-        "tool_call": 'reset_password(user_email="<user_email>", method="sms")',
+        "tool_call": 'reset_password(user_email="<email>", method="sms")',
     },
     {
-        "query": "How do I enrol in two-factor authentication?",
+        "query": "How do I enroll in two-factor authentication?",
         "thought": (
-            "MFA enrolment is a how-to question with well-documented steps in the knowledge base. "
-            "The user is not locked out — they just need guidance. "
-            "lookup_knowledge_base is the right first action."
+            "This is a how-to question — the user is not locked out.\n"
+            "  • MFA enrollment is fully documented in the knowledge base.\n"
+            "  • lookup_knowledge_base is TIER 1 (self-service); no ticket needed.\n"
+            "  • The user can follow the guide independently."
         ),
-        "tool_call": 'lookup_knowledge_base(query="MFA two-factor authentication setup enrolment")',
+        "tool_call": 'lookup_knowledge_base(query="MFA two-factor authentication enrollment setup")',
     },
-    # Network / VPN
+
+    # ── NETWORK ───────────────────────────────────────────────────────────
     {
         "query": "I can't connect to the VPN from home",
         "thought": (
-            "VPN connectivity issues are common and covered by documented troubleshooting steps "
-            "(AnyConnect config, DNS flush, credentials). "
-            "I should surface the KB article before raising a ticket — the user can likely self-fix."
+            "VPN connectivity issues are common and well-documented.\n"
+            "  • The KB covers AnyConnect config, DNS flush, credential issues.\n"
+            "  • This is a single-user issue, not a floor-wide outage.\n"
+            "  • TIER 1: surface the KB article before opening a ticket."
         ),
-        "tool_call": 'lookup_knowledge_base(query="VPN connection remote home troubleshoot")',
+        "tool_call": 'lookup_knowledge_base(query="VPN connection remote home AnyConnect troubleshoot")',
     },
     {
-        "query": "The office Wi-Fi keeps disconnecting on my laptop",
+        "query": "Nobody on our floor has any internet connection right now",
         "thought": (
-            "Intermittent Wi-Fi is documented — re-enrol on CORP-SECURE, check 802.1X cert. "
-            "KB guidance covers this. No hands-on work needed yet."
-        ),
-        "tool_call": 'lookup_knowledge_base(query="Wi-Fi wireless network disconnecting corporate office")',
-    },
-    {
-        "query": "The internet on our entire floor seems to be down",
-        "thought": (
-            "A floor-wide outage suggests infrastructure rather than a user-device issue. "
-            "Before creating a ticket I should check if this is a known incident. "
-            "check_system_status for 'internet' is the right first move."
+            "Floor-wide loss of internet = infrastructure issue, not a user device.\n"
+            "  • Opening individual tickets would create noise.\n"
+            "  • check_system_status first — if there's a known incident, the team\n"
+            "    just needs the ETA; a ticket is unnecessary.\n"
+            "  • This is always the first move for multi-user outage reports."
         ),
         "tool_call": 'check_system_status(service_name="internet")',
     },
-    # Hardware
     {
-        "query": "My laptop screen keeps flickering",
+        "query": "My Wi-Fi drops every hour in the office",
         "thought": (
-            "Screen flickering is typically a driver or refresh-rate issue — documented in KB. "
-            "Directing the user to driver-update steps is faster than opening a ticket. "
-            "If the KB steps don't help, they can call back for physical inspection."
+            "Intermittent single-user Wi-Fi issues are documented.\n"
+            "  • Re-enrolling on CORP-SECURE and checking 802.1X certs fixes most cases.\n"
+            "  • TIER 1: KB first. This is self-serviceable."
+        ),
+        "tool_call": 'lookup_knowledge_base(query="Wi-Fi wireless dropping disconnecting office corporate")',
+    },
+
+    # ── HARDWARE ──────────────────────────────────────────────────────────
+    {
+        "query": "The display on my laptop keeps flickering",
+        "thought": (
+            "Screen flicker is almost always a GPU driver or refresh-rate issue.\n"
+            "  • KB has step-by-step: update display drivers, set 60Hz refresh rate.\n"
+            "  • 90% of cases are self-resolvable; no ticket needed upfront.\n"
+            "  • If KB steps fail → user calls back → physical inspection ticket."
         ),
         "tool_call": 'lookup_knowledge_base(query="laptop screen flickering display driver refresh rate")',
     },
     {
-        "query": "My printer shows offline and won't print anything",
+        "query": "My laptop battery only lasts 40 minutes when fully charged",
         "thought": (
-            "Printer offline can sometimes be fixed by restarting the spooler (KB-resolvable). "
-            "However, office printers are shared infrastructure — if the spooler fix fails, "
-            "a technician may need to intervene. I'll check the KB first but the ticket "
-            "may still be needed after the user tries self-help."
+            "Battery degradation this severe = worn cell, not a software issue.\n"
+            "  • There is no KB fix for a failing battery — physical swap required.\n"
+            "  • create_ticket under 'hardware', medium priority.\n"
+            "  • Technician will assess whether a swap or a new device is needed."
         ),
-        "tool_call": 'lookup_knowledge_base(query="printer offline spooler fix troubleshoot")',
+        "tool_call": 'create_ticket(category="hardware", priority="medium", summary="Laptop battery degraded — under 40 min runtime", user_email="<email>")',
     },
     {
-        "query": "My computer freezes every few minutes and is barely usable",
+        "query": "Can you book a RAM upgrade slot for my workstation?",
         "thought": (
-            "Frequent freezing has multiple common causes: high RAM/CPU, full disk, OS corruption. "
-            "These all have KB-documented remediation steps. "
-            "I should surface those first before creating a ticket."
+            "The user is explicitly requesting a physical hardware upgrade.\n"
+            "  • schedule_maintenance is the purpose-built tool for this.\n"
+            "  • It books a workshop slot and sends confirmation — no ticket needed.\n"
+            "  • maintenance_type = 'ram_upgrade'."
         ),
-        "tool_call": 'lookup_knowledge_base(query="computer freezing slow performance unresponsive RAM CPU")',
+        "tool_call": 'schedule_maintenance(asset_id="<id>", maintenance_type="ram_upgrade", preferred_date="<date>", user_email="<email>")',
     },
     {
-        "query": "My laptop battery dies in under an hour even when fully charged",
+        "query": "My desktop is very slow and keeps freezing",
         "thought": (
-            "Battery degradation to under an hour is a hardware fault — likely a worn cell. "
-            "This cannot be resolved remotely. The user will need a battery swap. "
-            "Create a ticket under hardware so a technician can assess and schedule a replacement."
+            "Frequent freezing has documented causes: high RAM/CPU, full disk, OS corruption.\n"
+            "  • KB covers Task Manager checks, SFC /scannow, Storage Sense.\n"
+            "  • These are all self-resolvable steps the user can try first.\n"
+            "  • TIER 1: lookup_knowledge_base before creating a ticket."
         ),
-        "tool_call": (
-            'create_ticket(category="hardware", priority="medium", '
-            'summary="Laptop battery degraded — drains in under one hour", '
-            'user_email="<user_email>")'
-        ),
+        "tool_call": 'lookup_knowledge_base(query="computer desktop slow freezing performance RAM CPU disk")',
     },
     {
-        "query": "I'd like to schedule a RAM upgrade for my workstation",
+        "query": "My laptop keeps overheating and shutting itself off",
         "thought": (
-            "The user is explicitly requesting a hardware upgrade — this is physical work. "
-            "schedule_maintenance is the correct tool: it books a slot at the IT workshop "
-            "and notifies the user. No ticket creation is needed; maintenance IS the ticket."
+            "Thermal shutdown suggests a failing fan or dry heat paste.\n"
+            "  • KB has basic tips (clean vents, power profile), worth surfacing.\n"
+            "  • But persistent thermal shutdowns usually need physical inspection.\n"
+            "  • Start with KB; a hardware ticket is likely the next step."
         ),
-        "tool_call": (
-            'schedule_maintenance(asset_id="<asset_id>", maintenance_type="ram_upgrade", '
-            'preferred_date="<date>", user_email="<user_email>")'
-        ),
-    },
-    # Software
-    {
-        "query": "Microsoft Excel crashes every time I try to open a file",
-        "thought": (
-            "Excel crashing is a common M365 issue — usually resolved by a Quick Repair "
-            "or cache clear. KB has step-by-step guidance. "
-            "Point the user to self-service before creating a ticket."
-        ),
-        "tool_call": 'lookup_knowledge_base(query="Microsoft Excel crash M365 Office repair")',
+        "tool_call": 'lookup_knowledge_base(query="laptop overheating thermal shutdown fan hardware")',
     },
     {
-        "query": "I need Adobe Acrobat Pro installed on my laptop",
+        "query": "I need a screen replacement for my laptop",
         "thought": (
-            "Software installation requires license procurement and Intune/SCCM deployment. "
-            "This is not self-serviceable — the IT portal must approve and deploy it. "
-            "Create a ticket under 'software' with low priority."
+            "Screen replacement is unambiguously physical workshop work.\n"
+            "  • schedule_maintenance with type='screen_replacement'.\n"
+            "  • No KB lookup needed — user is explicitly requesting on-site service."
         ),
-        "tool_call": (
-            'create_ticket(category="software", priority="low", '
-            'summary="Software installation request — Adobe Acrobat Pro", '
-            'user_email="<user_email>")'
+        "tool_call": 'schedule_maintenance(asset_id="<id>", maintenance_type="screen_replacement", preferred_date="<date>", user_email="<email>")',
+    },
+
+    # ── SOFTWARE ──────────────────────────────────────────────────────────
+    {
+        "query": "Excel crashes every time I try to open a file",
+        "thought": (
+            "Excel/M365 crashes are well-documented: Quick Repair → cache clear.\n"
+            "  • TIER 1: KB has the exact fix. Self-serviceable.\n"
+            "  • Only escalate to a ticket if Quick Repair and Online Repair both fail."
         ),
+        "tool_call": 'lookup_knowledge_base(query="Microsoft Excel crash M365 Office Quick Repair")',
     },
     {
-        "query": "Outlook is not receiving any emails since this morning",
+        "query": "I need Adobe Acrobat installed on my machine",
         "thought": (
-            "Before assuming a client-side issue, I should check if the email service is down. "
-            "If check_system_status shows 'operational', then the problem is likely a corrupted "
-            "profile or sync issue — and the KB has steps for that. "
-            "I'll check system status first."
+            "Software installs require license procurement + Intune/SCCM deployment.\n"
+            "  • No self-service path exists — this is always TIER 3.\n"
+            "  • create_ticket under 'software', low priority (not blocking)."
+        ),
+        "tool_call": 'create_ticket(category="software", priority="low", summary="Software install request — Adobe Acrobat", user_email="<email>")',
+    },
+    {
+        "query": "Outlook stopped receiving emails since this morning — could it be a server issue?",
+        "thought": (
+            "User is hinting at a server problem, not a client config issue.\n"
+            "  • Before opening a ticket or KB lookup, check if email service is down.\n"
+            "  • If check_system_status returns 'operational', THEN look at KB for\n"
+            "    Outlook profile corruption or sync issues.\n"
+            "  • Always rule out an outage first when the user mentions 'server'."
         ),
         "tool_call": 'check_system_status(service_name="email")',
     },
-    # Teams / Collaboration
     {
-        "query": "Teams crashes whenever I join a video call",
+        "query": "Microsoft Teams crashes every time I join a video call",
         "thought": (
-            "Teams crash on calls is a known issue — usually fixed by clearing the cache "
-            "or updating drivers. The KB has these steps. Self-service is likely sufficient."
+            "Teams crash on call join = cache corruption or driver issue, both KB-documented.\n"
+            "  • KB covers: clear Teams cache, update display/audio drivers.\n"
+            "  • Self-serviceable. No ticket required upfront."
         ),
-        "tool_call": 'lookup_knowledge_base(query="Microsoft Teams video call crash cache clear")',
+        "tool_call": 'lookup_knowledge_base(query="Microsoft Teams crash video call cache clear driver")',
+    },
+
+    # ── SECURITY ──────────────────────────────────────────────────────────
+    {
+        "query": "I received a suspicious email asking me to click a link and enter my credentials",
+        "thought": (
+            "This is an active phishing attempt — a security incident.\n"
+            "  • Time is critical: if the user clicked the link, credentials may\n"
+            "    already be compromised and the security team must act immediately.\n"
+            "  • Step 1: create_ticket with category='security', priority='critical'\n"
+            "    — this creates the audit trail and triggers SLA monitoring.\n"
+            "  • Step 2: escalate_ticket to 'security-team' immediately.\n"
+            "  • Both steps are REQUIRED — escalation alone doesn't create a ticket."
+        ),
+        "tool_call": ('create_ticket(category="security", priority="critical", '
+                      'summary="Suspected phishing — user received credential-harvesting email", '
+                      'user_email="<email>") '
+                      '→ escalate_ticket(ticket_id="<ticket_id>", '
+                      'reason="Active phishing attempt — possible credential compromise", '
+                      'escalate_to="security-team")'),
     },
     {
-        "query": "My microphone is not working in Teams meetings",
+        "query": "Files on my desktop have been renamed and I can't open them",
         "thought": (
-            "Microphone issues in Teams are almost always a device-permission or device-selection "
-            "problem in Teams Settings → Devices, or a Windows privacy setting. "
-            "The KB covers this precisely. Direct the user to self-service."
+            "Unexplained file renaming + inability to open = classic ransomware indicator.\n"
+            "  • This is a critical security incident. Do NOT try KB steps.\n"
+            "  • Step 1: create_ticket category='security', priority='critical'.\n"
+            "  • Step 2: escalate_ticket to 'security-team' immediately.\n"
+            "  • The device must be isolated; the security team handles the rest."
         ),
-        "tool_call": 'lookup_knowledge_base(query="Teams microphone not working permissions settings")',
+        "tool_call": ('create_ticket(category="security", priority="critical", '
+                      'summary="Suspected ransomware — files renamed and inaccessible", '
+                      'user_email="<email>") '
+                      '→ escalate_ticket(ticket_id="<ticket_id>", '
+                      'reason="Ransomware suspected — device requires isolation", '
+                      'escalate_to="security-team")'),
     },
-    # Security
+
+    # ── ACCESS ────────────────────────────────────────────────────────────
     {
-        "query": "I received a suspicious email asking me to click a link and enter credentials",
+        "query": "I need read access to the Legal department's SharePoint library",
         "thought": (
-            "This is a phishing attempt — a security incident. "
-            "Time is critical: if the user clicked the link, credentials may already be compromised. "
-            "I must (1) create a priority critical ticket for the audit trail, "
-            "then (2) immediately escalate to the security team. "
-            "These two actions should happen in sequence."
+            "SharePoint access provisioning requires manager approval + IT action.\n"
+            "  • No self-service path — this is always TIER 3.\n"
+            "  • create_ticket under 'access', medium priority.\n"
+            "  • The IT access team will request manager CC before provisioning."
         ),
-        "tool_call": (
-            'create_ticket(category="security", priority="critical", '
-            'summary="Suspected phishing email — credential compromise risk", '
-            'user_email="<user_email>") '
-            '→ escalate_ticket(ticket_id="<ticket_id>", '
-            'reason="Active phishing attempt", escalate_to="security-team")'
-        ),
-    },
-    {
-        "query": "I think my machine has been infected with ransomware",
-        "thought": (
-            "Ransomware is a critical security incident. "
-            "The device must be isolated immediately. "
-            "I need to create a critical ticket and escalate to the security team at once. "
-            "This is not a KB-resolvable situation."
-        ),
-        "tool_call": (
-            'create_ticket(category="security", priority="critical", '
-            'summary="Suspected ransomware infection — device requires immediate isolation", '
-            'user_email="<user_email>") '
-            '→ escalate_ticket(ticket_id="<ticket_id>", '
-            'reason="Ransomware suspected", escalate_to="security-team")'
-        ),
-    },
-    # Access
-    {
-        "query": "I need access to the Finance department shared drive",
-        "thought": (
-            "Shared drive access requires manager approval and manual provisioning — "
-            "there is no self-service path. "
-            "Create a ticket under 'access' with medium priority. "
-            "The IT access team will request manager approval."
-        ),
-        "tool_call": (
-            'create_ticket(category="access", priority="medium", '
-            'summary="Access request — Finance shared drive", '
-            'user_email="<user_email>")'
-        ),
+        "tool_call": 'create_ticket(category="access", priority="medium", summary="Access request — Legal SharePoint read access", user_email="<email>")',
     },
     {
-        "query": "My new colleague needs access to the Marketing SharePoint site",
+        "query": "My new hire starts Monday and needs an AD account and laptop",
         "thought": (
-            "Provisioning access for a colleague is an access management task. "
-            "Create a ticket; the requester's manager must approve before IT provisions access."
+            "New hire provisioning = account creation + device assignment.\n"
+            "  • This is a planned access + hardware task, not an emergency.\n"
+            "  • create_ticket under 'access', high priority (time-sensitive — Monday).\n"
+            "  • IT will coordinate with HR to complete setup before start date."
         ),
-        "tool_call": (
-            'create_ticket(category="access", priority="medium", '
-            'summary="Access request — Marketing SharePoint for new colleague", '
-            'user_email="<user_email>")'
-        ),
+        "tool_call": 'create_ticket(category="access", priority="high", summary="New hire onboarding — AD account and laptop needed by Monday", user_email="<email>")',
     },
-    # System Status
+
+    # ── SYSTEM STATUS ─────────────────────────────────────────────────────
     {
-        "query": "SharePoint seems to be down — nobody on my team can access files",
+        "query": "Is SharePoint currently experiencing any outages?",
         "thought": (
-            "A team-wide SharePoint issue suggests a service-level problem, not a user-device problem. "
-            "I should check_system_status before creating individual tickets — "
-            "if there is an active incident, the team just needs to wait for the ETA."
+            "This is a direct outage inquiry — the user wants a live status check.\n"
+            "  • check_system_status is always the first (and often only) action here.\n"
+            "  • If status = 'outage', relay the ETA. If 'operational', investigate further."
         ),
         "tool_call": 'check_system_status(service_name="sharepoint")',
     },
     {
-        "query": "Our CRM has been throwing errors all morning",
+        "query": "The CRM has been throwing 500 errors for the whole team since 9am",
         "thought": (
-            "CRM errors affecting multiple users imply a possible service outage. "
-            "check_system_status for 'crm' will confirm whether this is a known incident. "
-            "If not, I'll create a ticket with the error details."
+            "Team-wide CRM errors since a specific time = likely service-level issue.\n"
+            "  • check_system_status before creating individual tickets.\n"
+            "  • If an incident is active, the error is already being worked.\n"
+            "  • If status = 'operational', escalate to network-team for investigation."
         ),
         "tool_call": 'check_system_status(service_name="crm")',
     },
-    # Onboarding
+
+    # ── USER / ACCOUNT / BILLING ──────────────────────────────────────────
     {
-        "query": "I'm a new starter and need help setting up my work laptop",
+        "query": "Can you look up the account details for alice.jones@company.com?",
         "thought": (
-            "New employee onboarding is fully documented in the KB with a step-by-step checklist. "
-            "Pointing the user to the onboarding article is faster than creating a ticket "
-            "and empowers them to self-configure with the guide."
+            "This is a directory lookup request.\n"
+            "  • get_user_info returns department, manager, account status, devices.\n"
+            "  • No ticket or KB lookup needed — this is a pure data retrieval."
         ),
-        "tool_call": 'lookup_knowledge_base(query="new employee IT onboarding laptop setup checklist")',
+        "tool_call": 'get_user_info(user_email="alice.jones@company.com")',
     },
-    # User Info
     {
-        "query": "Can you pull up the account details for jane.doe@company.com?",
+        "query": "Check the subscription tier for bob@company.com",
         "thought": (
-            "This is a directory lookup request. "
-            "get_user_info is designed exactly for this: "
-            "it returns department, manager, account status, and assigned devices."
+            "This is a subscription/billing context lookup.\n"
+            "  • lookup_user_account is purpose-built for subscription + block status.\n"
+            "  • Use this (not get_user_info) when billing context is needed."
         ),
-        "tool_call": 'get_user_info(user_email="jane.doe@company.com")',
+        "tool_call": 'lookup_user_account(email="bob@company.com")',
+    },
+    {
+        "query": "Process a refund for reservation RES-00789",
+        "thought": (
+            "The user has a specific reservation ID and wants a refund.\n"
+            "  • process_refund is the direct action. No ticket creation needed.\n"
+            "  • If the refund fails (ID not found), THEN create a billing ticket."
+        ),
+        "tool_call": 'process_refund(reservation_id="RES-00789")',
+    },
+
+    # ── MEMORY / HISTORY ──────────────────────────────────────────────────
+    {
+        "query": "What issues has user jdoe contacted IT about before?",
+        "thought": (
+            "The user is asking for a quick history summary, not reporting a new issue.\n"
+            "  • get_customer_history returns a brief past-issue summary.\n"
+            "  • Use this for a fast context check before triaging the current request."
+        ),
+        "tool_call": 'get_customer_history(user_id="jdoe")',
+    },
+    {
+        "query": "The issue is resolved. Please save it to the user's long-term history.",
+        "thought": (
+            "Post-resolution archiving — the ticket is closed.\n"
+            "  • store_resolved_ticket is for brief, one-sentence summaries.\n"
+            "  • Use save_ticket_to_long_term_memory if a full issue + resolution\n"
+            "    detail is available. Choose based on available detail level."
+        ),
+        "tool_call": 'store_resolved_ticket(user_id="<user_id>", summary="<one-sentence summary>")',
+    },
+    {
+        "query": "Archive the full outcome of this ticket including what fixed it",
+        "thought": (
+            "Full post-resolution archiving with both the problem and the fix.\n"
+            "  • save_ticket_to_long_term_memory captures both summary AND resolution.\n"
+            "  • This is richer than store_resolved_ticket and should be used when\n"
+            "    the resolution steps are known and worth preserving."
+        ),
+        "tool_call": 'save_ticket_to_long_term_memory(user_id="<user_id>", summary="<summary>", resolution="<resolution>")',
     },
 ]
 
-# ---------------------------------------------------------------------------
-# TF-IDF selector (same mechanism as Experiment 3)
-# ---------------------------------------------------------------------------
+# ── TF-IDF selector ──────────────────────────────────────────────────────────
 
-def _build_cot_corpus() -> tuple[list[str], TfidfVectorizer, np.ndarray]:
+def _build_cot_index():
     queries = [ex["query"] for ex in COT_EXAMPLE_DATABASE]
-    vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
-    matrix = vectorizer.fit_transform(queries)
-    return queries, vectorizer, matrix
+    vec = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
+    mat = vec.fit_transform(queries)
+    return vec, mat
 
-
-_COT_CORPUS_QUERIES, _COT_VECTORIZER, _COT_CORPUS_MATRIX = _build_cot_corpus()
+_COT_VECTORIZER, _COT_MATRIX = _build_cot_index()
 
 
 def select_cot_examples(user_query: str, top_k: int = 3) -> list[dict]:
     """
-    Return the `top_k` CoT examples whose stored query is most similar
-    to `user_query` by TF-IDF cosine similarity.
+    Return the top_k COT_EXAMPLE_DATABASE entries whose stored query is most
+    similar to user_query by TF-IDF cosine similarity.
     """
-    query_vec = _COT_VECTORIZER.transform([user_query])
-    scores = cosine_similarity(query_vec, _COT_CORPUS_MATRIX).flatten()
-    top_indices = scores.argsort()[::-1][:top_k]
-    return [COT_EXAMPLE_DATABASE[i] for i in top_indices]
+    qvec = _COT_VECTORIZER.transform([user_query])
+    scores = cosine_similarity(qvec, _COT_MATRIX).flatten()
+    indices = scores.argsort()[::-1][:top_k]
+    return [COT_EXAMPLE_DATABASE[i] for i in indices]
 
 
-# ---------------------------------------------------------------------------
-# Prompt assembly
-# ---------------------------------------------------------------------------
+# ── Prompt template ──────────────────────────────────────────────────────────
 
-_COT_PROMPT_TEMPLATE = """\
-You are an expert IT Helpdesk assistant. Your role is to reason carefully about
-the user's problem step-by-step and then call the single most appropriate tool.
+_COT_TEMPLATE = """\
+You are a senior IT Helpdesk agent. Reason step-by-step through the user's
+request, then call the single most appropriate tool (or sequence of tools
+for multi-step incidents like security escalations).
 
-## Available Tools
-- lookup_knowledge_base  : Search self-service articles (use FIRST for common issues).
-- create_ticket          : Log a new support ticket for hands-on work.
-- escalate_ticket        : Escalate a ticket to a specialist team.
-- reset_password         : Initiate a password reset for a locked-out user.
-- get_user_info          : Retrieve account and device info from the directory.
-- check_system_status    : Check if a service is currently up or experiencing an outage.
-- schedule_maintenance   : Book a physical maintenance appointment for a device.
+AVAILABLE TOOLS:
+  lookup_knowledge_base        – self-service KB articles (TIER 1 — try first)
+  check_system_status          – live service status (check before outage tickets)
+  reset_password               – password reset for locked-out users (TIER 2)
+  process_refund               – billing refund (TIER 2)
+  lookup_user_account          – subscription + account status (TIER 2)
+  get_user_info                – AD directory lookup (TIER 2)
+  create_ticket                – new helpdesk ticket (TIER 3)
+  escalate_ticket              – escalate to specialist (TIER 3, after create_ticket)
+  schedule_maintenance         – physical maintenance appointment (TIER 3)
+  store_resolved_ticket        – archive brief resolved summary (TIER 4)
+  save_ticket_to_long_term_memory – archive full issue + resolution (TIER 4)
+  get_user_long_term_memory    – retrieve full user history (TIER 4)
+  get_customer_history         – quick past-issues summary (TIER 4)
 
-## Tool Selection Rules
-1. Prefer lookup_knowledge_base for well-documented, self-service issues.
-2. Use reset_password when the user is explicitly locked out or cannot log in.
-3. Use check_system_status BEFORE creating a ticket for service-outage reports.
-4. Use create_ticket for hardware faults, access requests, or issues needing hands-on work.
-5. Use escalate_ticket immediately for confirmed security incidents.
-6. Use schedule_maintenance only for physical, on-site hardware work.
-7. Use get_user_info to retrieve a user's profile when needed for context.
+DIAGNOSTIC QUESTIONS — answer these before picking a tool:
+  1. Is this AUTH / KB / OUTAGE / HARDWARE / SOFTWARE / SECURITY / ACCESS / BILLING / HISTORY?
+  2. Can the user resolve this themselves with KB guidance? (→ TIER 1)
+  3. Could this be a known outage? (→ check_system_status before anything else)
+  4. Is there a security risk requiring immediate escalation? (→ create + escalate)
+  5. Does this require physical work or manager approval? (→ TIER 3)
 
-## How to Reason (Chain-of-Thought)
-For every request, think through these questions before choosing a tool:
-  • What is the core problem type? (auth / hardware / software / network / security / access / outage)
-  • Can the user self-resolve with KB guidance?
-  • Could this be a known outage? (check_system_status first)
-  • Does this require physical/hands-on IT work?
-  • Is there a security risk that demands immediate escalation?
-
-## Most Relevant Examples for This Query (with Reasoning Traces)
+MOST RELEVANT WORKED EXAMPLES FOR THIS QUERY:
 {examples_block}
 
-Now reason through the user's request and call the correct tool.
+Now reason through the user's request and call the correct tool(s).
 """
 
 
@@ -359,21 +401,14 @@ def build_system_prompt(user_query: str, top_k: int = 3) -> str:
     """
     Dynamically construct the CoT system prompt by selecting the most
     relevant reasoning-trace examples for the given user query.
-
-    Args:
-        user_query: The raw incoming user message.
-        top_k: Number of CoT examples to inject.
-
-    Returns:
-        A fully assembled system prompt string with dynamic CoT examples.
     """
     examples = select_cot_examples(user_query, top_k=top_k)
-    lines = []
+    lines: list[str] = []
     for i, ex in enumerate(examples, 1):
-        lines.append(f"---\nExample {i}")
-        lines.append(f'User: "{ex["query"]}"')
+        lines.append(f"{'─'*60}")
+        lines.append(f"Example {i}")
+        lines.append(f"User: \"{ex['query']}\"")
         lines.append(f"Thought:\n  {ex['thought']}")
         lines.append(f"Action: {ex['tool_call']}")
         lines.append("")
-    examples_block = "\n".join(lines).strip()
-    return _COT_PROMPT_TEMPLATE.format(examples_block=examples_block)
+    return _COT_TEMPLATE.format(examples_block="\n".join(lines).strip())

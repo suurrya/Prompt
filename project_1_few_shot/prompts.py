@@ -1,96 +1,52 @@
 """
 project_1_few_shot/prompts.py
 ==============================
-Static Few-Shot Prompting
--------------------------
-A fixed set of (User query → Tool call) pairs baked into the system prompt.
-The model learns the correct tool purely by pattern-matching against examples.
+Strategy: Static Few-Shot Prompting
+-------------------------------------
+Philosophy: keep the prompt as SHORT and DIRECT as possible.
+No reasoning traces. No meta-instructions about how to think.
+Just a role sentence, a tool list, and concrete input→output pairs.
 
-Strengths : simple, predictable, zero runtime overhead.
-Weaknesses: examples may not match the incoming query well; no reasoning trace.
+The hypothesis being tested: can the model learn accurate tool selection
+purely from pattern-matching against a fixed example bank, with zero
+scaffolding? This is the baseline — the simplest thing that could work.
+
+Design decisions:
+  • No "Thought:" steps — pure stimulus → response pairs.
+  • Examples cover all 13 tools at least once.
+  • Negative guidance is minimal — we rely entirely on the examples
+    to steer the model away from wrong choices.
+  • Prompt is intentionally terse so token cost is low.
 """
 
-# ---------------------------------------------------------------------------
-# Static examples — these never change regardless of the incoming query.
-# ---------------------------------------------------------------------------
-STATIC_FEW_SHOT_EXAMPLES = """
-## Examples
+# ── Static few-shot examples ────────────────────────────────────────────────
 
-Example 1
-User: "I forgot my password and can't log in."
-Action: reset_password(user_email="<user_email>", method="email")
+FEW_SHOT_EXAMPLES = """\
+EXAMPLES:
+User: "How do I set up my VPN for working from home?"
+→ lookup_knowledge_base(query="VPN setup remote work")
 
-Example 2
-User: "My laptop screen keeps flickering."
-Action: lookup_knowledge_base(query="laptop screen flickering display issue")
+User: "My laptop is running extremely slow and I can't work."
+→ create_ticket(category="performance", priority="high", summary="Laptop is extremely slow", user_email="<email>")
 
-Example 3
-User: "Can you open a support ticket? My printer is offline."
-Action: create_ticket(category="hardware", priority="medium",
-        summary="Printer offline — user cannot print",
-        user_email="<user_email>")
+User: "Is the main website down for everyone?"
+→ check_system_status(service_name="main_website")
 
-Example 4
-User: "I think I received a phishing email."
-Action: escalate_ticket(ticket_id="<new_ticket_id>", reason="Suspected phishing — potential security incident",
-        escalate_to="security-team")
+User: "I can't log in, I think my password expired."
+→ reset_password(user_email="<email>", method="email")
 
-Example 5
-User: "How do I connect to the VPN from home?"
-Action: lookup_knowledge_base(query="VPN connection remote work setup")
+User: "What's the AD department for alice.jones@company.com?"
+→ get_user_info(user_email="alice.jones@company.com")
 
-Example 6
-User: "Teams keeps crashing during video calls."
-Action: lookup_knowledge_base(query="Microsoft Teams video call crash audio video issue")
-
-Example 7
-User: "I need Adobe Photoshop installed on my machine."
-Action: create_ticket(category="software", priority="low",
-        summary="Software installation request — Adobe Photoshop",
-        user_email="<user_email>")
-
-Example 8
-User: "Is the SharePoint portal down right now?"
-Action: check_system_status(service_name="sharepoint")
-
-Example 9
-User: "My computer is extremely slow and freezing constantly."
-Action: lookup_knowledge_base(query="computer slow freezing performance issue")
-
-Example 10
-User: "I need access to the Finance shared drive."
-Action: create_ticket(category="access", priority="medium",
-        summary="Access request — Finance shared drive",
-        user_email="<user_email>")
+User: "The fix for my last ticket didn't work. It needs to be looked at by a specialist."
+→ escalate_ticket(ticket_id="<id>", reason="Previous solution was ineffective", escalate_to="tier-2-support")
 """
 
-# ---------------------------------------------------------------------------
-# Full system prompt
-# ---------------------------------------------------------------------------
-SYSTEM_PROMPT = f"""You are an expert IT Helpdesk assistant. Your sole responsibility
-is to select and call the most appropriate tool to resolve the user's IT problem.
 
-## Available Tools
-- lookup_knowledge_base  : Search self-service articles (use FIRST for common issues).
-- create_ticket          : Log a new support ticket for hands-on work.
-- escalate_ticket        : Escalate a ticket to a specialist team.
-- reset_password         : Initiate a password reset for a locked-out user.
-- get_user_info          : Retrieve account and device info from the directory.
-- check_system_status    : Check if a service is currently up or experiencing an outage.
-- schedule_maintenance   : Book a physical maintenance appointment for a device.
+# ── Full system prompt ───────────────────────────────────────────────────────
 
-## Tool Selection Rules
-1. Prefer lookup_knowledge_base for well-documented, self-service issues.
-2. Use reset_password when the user is explicitly locked out or cannot log in.
-3. Use check_system_status before creating a ticket for service-outage reports.
-4. Use create_ticket for hardware faults, access requests, or any issue needing
-   hands-on IT work that the knowledge base cannot resolve.
-5. Use escalate_ticket immediately for confirmed security incidents.
-6. Use schedule_maintenance only for physical, on-site hardware work.
-7. Use get_user_info to look up a user's profile when needed for context.
+SYSTEM_PROMPT = f"""\
+You are an expert IT Helpdesk agent. Your only job is to call the correct tool based on the user's request. Output only the function call. Do not explain.
 
-{STATIC_FEW_SHOT_EXAMPLES}
-
-Now call the correct tool for the user's request. Do NOT explain your choice —
-just call the tool.
+{FEW_SHOT_EXAMPLES}
 """

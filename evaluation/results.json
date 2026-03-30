@@ -1,0 +1,88 @@
+{
+  "run_at": "2026-03-30T16:13:38.816297",
+  "experiments": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "test_case_count": 1,
+  "results": [
+    {
+      "experiment_id": 1,
+      "name": "Static Few-Shot",
+      "accuracy": 1.0,
+      "correct": 1,
+      "total": 1,
+      "results": [
+        {
+          "id": "TC-001",
+          "query": "I forgot my password and I'm locked out of my computer.",
+          "expected": "reset_password",
+          "actual": "reset_password",
+          "correct": true,
+          "latency_s": 5.07,
+          "response": "If you've forgotten your password and are locked out of your computer, you can try resetting it using the knowledge base query. If that doesn't work, you may need to contact support or use an alternative method based on your specific situation.",
+          "error": null
+        }
+      ]
+    },
+    {
+      "experiment_id": 2,
+      "name": "Static Chain-of-Thought",
+      "accuracy": 1.0,
+      "correct": 1,
+      "total": 1,
+      "results": [
+        {
+          "id": "TC-001",
+          "query": "I forgot my password and I'm locked out of my computer.",
+          "expected": "reset_password",
+          "actual": "reset_password",
+          "correct": true,
+          "latency_s": 10.64,
+          "response": "Thank you for letting me know. When faced with forgetting your password and being locked out of your computer, here's what you can do:\n\n1. **Recovery Options Provided by Your Computer/Operating System**: Most computers offer built-in methods to recover forgotten passwords. Check if your computer has options like \"Reset Password\" through System Recovery, Apple\u2019s recovery mode, or similar features offered by other operating systems.\n\n2. **Contact Support**: If the above methods don\u2019t work, you may",
+          "error": null
+        }
+      ]
+    },
+    {
+      "experiment_id": 3,
+      "name": "Dynamic Few-Shot",
+      "accuracy": 1.0,
+      "correct": 1,
+      "total": 1,
+      "results": [
+        {
+          "id": "TC-001",
+          "query": "I forgot my password and I'm locked out of my computer.",
+          "expected": "reset_password",
+          "actual": "reset_password",
+          "correct": true,
+          "latency_s": 5.94,
+          "response": "Resetting your forgotten password may vary depending on how your computer is set up. However, here's some general guidance:\n\n  * Check if your operating system has a built-in reset password feature.\n  * Try contacting your system administrator or IT department if you're at work.\n  * If you have access to another account on the same computer or device, try logging in with that account to reset the forgotten password.\n\nIf none of these methods work, you might need to reset your computer password u",
+          "error": null
+        }
+      ]
+    },
+    {
+      "experiment_id": 4,
+      "name": "Dynamic Chain-of-Thought",
+      "accuracy": 0.0,
+      "correct": 0,
+      "total": 1,
+      "results": [
+        {
+          "id": "TC-001",
+          "query": "I forgot my password and I'm locked out of my computer.",
+          "expected": "reset_password",
+          "actual": "lookup_knowledge_base",
+          "correct": false,
+          "latency_s": 14.11,
+          "response": "I'm sorry to hear that you're experiencing issues with forgetting your password and being locked out of your computer. \n\nHere is what I recommend:\n\n### Step-by-Step Guide to Resolve Your Password Issues\n\n#### 1. Check for Self-Help Options:\nSometimes, you can regain access and reset your password using built-in software features or external tools provided by your operating system or service provider.\n\n- **Windows:**\n  - Use Microsoft Account recovery: [Microsoft Account Recovery](https://account",
+          "error": null
+        }
+      ]
+    }
+  ]
+}
