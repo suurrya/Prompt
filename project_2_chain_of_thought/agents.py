@@ -24,7 +24,7 @@ from smolagents import ToolCallingAgent, AgentMaxStepsError
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Custom wrapper for the Hugging Face Inference Router
-from model_wrapper import HFRouterModel
+from model_wrapper import TextToolParserModel
 from tool_extract import extract_tool_calls
 from tools import ALL_TOOLS
 from project_2_chain_of_thought.prompts import SYSTEM_PROMPT
@@ -44,7 +44,7 @@ class ITHelpdeskAgent:
 
     def __init__(self, model_id: str = "meta/llama3-8b-instruct", verbose: bool = False):
         self.verbose = verbose
-        self._model = HFRouterModel(
+        self._model = TextToolParserModel(
             model_id=model_id,
             api_base="https://integrate.api.nvidia.com/v1",
             api_key=os.environ["NVIDIA_API_KEY"],

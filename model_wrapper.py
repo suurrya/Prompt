@@ -4,9 +4,33 @@ import uuid
 from smolagents import OpenAIServerModel
 from smolagents.models import ChatMessageToolCall, ChatMessageToolCallFunction
 
-# TextToolCallingModel
+# TextToolParserModel
 
-class HFRouterModel(OpenAIServerModel):
+#
+# This class acts as a universal adapter or a "compatibility shim" to make
+# a "legacy" text-based model API compatible with the modern, tool-native
+# smol-agents framework.
+#
+# Its primary role is to solve the problem that the NVIDIA API endpoint for
+# Llama 3 does not support the OpenAI-standard structured JSON tool-calling format.
+# This class fakes that support through text parsing and adds critical resilience.
+#
+# Key Responsibilities:
+#   1. Disables Native Tools (`supports_native_tools = False`): Forces smol-agents
+#      to use simple text-based prompting instead of JSON.
+#
+#   2. Adds Resilient Retries (in `generate`): Automatically retries API calls
+#      on transient server errors (like 500 or "DEGRADED"), making the app
+#      more robust.
+#
+#   3. Parses Text to Tools (in `parse_tool_calls`): This is its main job.
+#      It uses a series of regex patterns to find and extract tool calls
+#      (like `Action: create_ticket(...)`) from the model's raw text output,
+#      then manually constructs the structured ToolCall objects that the
+#      rest of the framework expects.
+#
+
+class TextToolParserModel(OpenAIServerModel):
     """
     Custom model wrapper for the Hugging Face Inference Router.
     This model does NOT support native tool calls on the HF free tier 

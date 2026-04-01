@@ -458,11 +458,7 @@ async def index():
         "get_customer_history": "I checked the user's previous IT contact history."
     }
 
-    def _add_response(exp_id: int, raw: str, latency: float):
-        container = panel_refs[exp_id]["container"]
-        scroll = panel_refs[exp_id]["scroll"]
-        parsed = parse_dossier(raw)
-        
+    def _render_agent_response(container, parsed: dict, exp_id: int, latency: float):
         # 1. Determine the conversational AI message based on the tool
         tool = parsed.get("tool_name")
         if parsed.get("error"):
@@ -474,25 +470,58 @@ async def index():
             ai_message = "I analyzed the request but couldn't determine the correct action."
 
         # Convert raw markdown to HTML
-        html_content = markdown.markdown(raw, extensions=['fenced_code', 'tables'])
-        
+        # We assume 'raw' text is accessible or already parsed for HTML
+        # Using the simplified dossier view if tool exists
         with container:
-            # 2. Use Native NiceGUI components instead of raw HTML for the toggle
             with ui.column().classes('bubble bubble-agent').style('gap: 8px; padding: 12px;'):
-                # The conversational AI message
                 ui.html(f'<div style="font-size: 0.95em; color: #1e293b;">{ai_message}</div>')
-                
-                # The native dropdown toggle that actually works
                 with ui.expansion('Show Reasoning & Details').classes('w-full').props('dense expand-separator').style('color: #6366f1; font-weight: 500; font-size: 0.9em;'):
-                    ui.html(html_content).classes('text-xs overflow-x-auto').style('background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; color: #334155; margin-top: 4px;')
-                    
-        # Auto-scroll to bottom
-        scroll.scroll_to(percent=1.0, duration=0.3)
+                    color = EXPERIMENTS[exp_id]["color"]
+                    details = _details_html(parsed, color)
+                    ui.html(details).classes('text-xs overflow-x-auto').style('background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; color: #334155; margin-top: 4px;')
 
-        _show_comparison(results)
-        app.storage.user["is_processing"] = False
-        query_input.enable(); send_btn.enable()
-        query_input.run_method("focus")
+    def _add_agent_msg(exp_id: int, raw: str, latency: float):
+        refs   = panel_refs[exp_id]
+        stored = panel_messages[str(exp_id)]
+        stored.append({"role": "agent", "raw": raw, "latency": latency})
+        parsed = parse_dossier(raw)
+        _render_agent_response(refs["container"], parsed, exp_id, latency)
+        refs["scroll"].scroll_to(percent=1.0, duration=0.3)
+
+    def _show_comparison(results: list[dict]):
+        comparison_row.set_visibility(True)
+        comparison_row.clear()
+        with comparison_row:
+            tools    = [r["tool"] for r in results if r["tool"]]
+            all_same = len(set(tools)) == 1 if tools else False
+            with ui.element("div").classes("cbanner").style(
+                "background:#fff;border:1px solid #e2e8f0;border-radius:9px;"
+                "padding:10px 14px;margin:6px 0 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;"
+            ):
+                ui.html('<div style="font-size:10px;font-weight:700;color:#475569;'
+                        'letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;">'
+                        '⚡ Tool decision comparison</div>')
+                for r in sorted(results, key=lambda x: x["exp_id"]):
+                    meta  = EXPERIMENTS[r["exp_id"]]
+                    tool  = r["tool"] or "—"
+                    emoji = TOOL_EMOJI.get(tool, "❓") if tool != "—" else "❓"
+                    border = ("border:1.5px solid #fca5a5;background:#fef2f2;"
+                              if r.get("is_error") else
+                              f"border:1.5px solid {meta['color']};")
+                    ui.html(
+                        f'<div style="display:flex;align-items:center;gap:5px;'
+                        f'background:{meta["bg"]};{border}border-radius:6px;padding:4px 8px;">'
+                        f'<span style="font-size:10.5px;font-weight:700;color:{meta["color"]};">Exp {r["exp_id"]}</span>'
+                        f'<span style="font-size:13px;">{emoji}</span>'
+                        f'<span style="font-size:11px;font-weight:600;color:#1e293b;font-family:monospace;">{_esc(tool)}</span>'
+                        f'<span style="font-size:9.5px;color:#9ca3af;">{r["latency"]:.1f}s</span>'
+                        f'</div>'
+                    )
+                verdict = ('<span style="color:#059669;font-weight:600;">✓ All agents agree</span>'
+                           if all_same and tools else
+                           '<span style="color:#dc2626;font-weight:600;">⚡ Agents disagree — check reasoning</span>')
+                ui.html(f'<div style="font-size:11px;margin-left:auto;">{verdict}</div>')
+
 
     def _do_end_chat():
         panel_messages.update({str(k): [] for k in EXPERIMENTS})
@@ -567,7 +596,7 @@ async def index():
                 raw = f"❌ Error:\n`{str(exc) or repr(exc)}`"
             latency = time.perf_counter() - t0
             thinking[exp_id].delete()
-            _add_response(exp_id, str(raw), latency)
+            _add_agent_msg(exp_id, str(raw), latency)
             parsed = parse_dossier(str(raw))
             return {"exp_id": exp_id, "tool": parsed["tool_name"],
                     "latency": latency, "is_error": bool(parsed["error"])}

@@ -53,3 +53,400 @@ Since the user is locked out and cannot access the self-service portal, we canno
 Action: reset_password(user_email="<email>", method="email")
 
 Note: If the user was unable to access the self-service portal due to a phishing attempt or suspicious link, we would not reset the password and instead create a ticket with priority "critical" and escalate it to the security team.
+
+--- MODEL OUTPUT ---
+reset_password(user_email="<email>", method="email")
+
+--- MODEL OUTPUT ---
+Based on the rules, since the user is locked out of their computer, I will call the tool:
+
+reset_password(user_email="<email>", method="email")
+
+This will reset the user's password and allow them to regain access to their computer.
+
+--- MODEL OUTPUT ---
+Let's break it down!
+
+Q1: Problem type? (auth/KB/outage/hardware/software/security/access/billing/history) → auth
+
+Q2: Can user self-resolve with KB? YES → no (portal unreachable)
+
+Q3: Possible known outage? "team-wide"/"server issue?"/"since this morning" → no
+
+Q4: Security incident? phishing/suspicious link/malware/renamed files → no
+
+Q5: Physical work needed? battery/RAM/screen upgrade → no
+
+Since the user is locked out of their account, I'll use the critical rule "colleague says locked out" / "my account is locked" → AUTH → reset_password.
+
+Action: reset_password(user_email="<email>", method="email")
+
+I'll reset the user's password and send them an email with the new password.
+
+--- MODEL OUTPUT ---
+Let's apply the diagnostic framework to your request!
+
+Q1: What is the problem TYPE?
+AUTH - you're having trouble authenticating
+
+Q2: Can the user self-resolve with KB guidance? 
+NO - you're locked out of your computer, so you can't access the self-service portal
+
+Q3: Could this be a KNOWN SERVICE OUTAGE?
+NO - there's no indication of a team-wide or service-wide issue
+
+Q4: Is this a SECURITY INCIDENT?
+NO - it's just a forgotten password
+
+Q5: PHYSICAL work needed / EXPLICIT upgrade request?
+NO - no physical work is needed, and it's not an upgrade request
+
+Based on your answers, I'd recommend the following action:
+
+→ reset_password(user_email="<email>", method="manual")
+
+This will allow me to reset your password and get you back into your computer.
+
+--- MODEL OUTPUT ---
+reset_password(user_email="<email>", method="email")
+
+--- MODEL OUTPUT ---
+I'd be happy to help you with that!
+
+Since you're locked out of your computer and forgot your password, I'll call the `reset_password` tool to help you regain access.
+
+Here's the command: `reset_password(user_email="<your_email>", method="email")`
+
+Please note that I'll need your email address to proceed with the password reset process.
+
+--- MODEL OUTPUT ---
+Let's break it down:
+
+Q1: Problem type? → auth
+Q2: Can user self-resolve with KB? → no (portal unreachable)
+Q3: Possible known outage? → no
+Q4: Security incident? → no
+Q5: Physical work needed? → no
+
+Based on the answers, I think this is a classic authentication issue. Since the user can't self-resolve with the KB and the portal is unreachable, I'll use the reset_password tool to help the user regain access.
+
+Action: reset_password(user_email="<email>", method="email")
+
+This will send a password reset link to the user's email address, allowing them to regain access to their account.
+
+--- MODEL OUTPUT ---
+Let's apply the diagnostic framework to your request.
+
+Q1: What is the problem TYPE?
+    AUTH — user cannot authenticate.
+
+Q2: Can the user self-resolve with KB guidance?  YES → lookup_knowledge_base FIRST.
+    No, the user is locked out of their computer and cannot access the self-service portal.
+
+Q3: Could this be a KNOWN SERVICE OUTAGE?
+    No, it's a single-user issue.
+
+Q4: Is this a SECURITY INCIDENT?
+    No, it's a simple password reset.
+
+Q5: PHYSICAL work needed / EXPLICIT upgrade request?
+    No, no physical work or upgrade is required.
+
+Since the user is locked out of their computer and cannot access the self-service portal, we cannot use the KB or self-service options. Therefore, we will use the reset_password tool to initiate the password reset process.
+
+Action: reset_password(user_email="<email>", method="manual")
+
+Note: The method "manual" is used because the user is unable to access the self-service portal to initiate the password reset themselves.
+
+--- MODEL OUTPUT ---
+reset_password(user_email="<email>", method="email")
+
+--- MODEL OUTPUT ---
+Based on the rules, I'll call the correct tool.
+
+For "User or colleague locked out" (rule 5), I'll use the `reset_password` tool.
+
+Tool called: `reset_password(user_email="<email>", method="email")`
+
+--- MODEL OUTPUT ---
+Let's break it down:
+
+Q1: Problem type? → auth
+Q2: Can user self-resolve with KB? → no (portal unreachable)
+Q3: Possible known outage? → no
+Q4: Security incident? → no
+Q5: Physical work needed? → no
+
+Since it's an authentication issue and the user is locked out, I'll use the reset_password tool.
+
+Action: reset_password(user_email="<email>", method="email")
+
+I'll reset the user's password and send a new one to their registered email address.
+
+--- MODEL OUTPUT ---
+Let's apply the diagnostic framework to this task.
+
+Q1: What is the problem TYPE?
+Answer: AUTH — user cannot authenticate.
+
+Q2: Can the user self-resolve with KB guidance? 
+Answer: No — the user cannot access the self-service portal.
+
+Q3: Could this be a KNOWN SERVICE OUTAGE?
+Answer: No — no mention of a team-wide issue or outage.
+
+Q4: Is this a SECURITY INCIDENT?
+Answer: No — just a forgotten password.
+
+Q5: PHYSICAL work needed / EXPLICIT upgrade request?
+Answer: No — no physical work needed.
+
+Based on the answers, I would choose to use the `reset_password` tool.
+
+Action: reset_password(user_email="<email>", method="email")
+
+Note: Since the user is locked out, I would not ask them to reset their password through the self-service portal. Instead, I would initiate the password reset process directly using the `reset_password` tool.
+
+--- MODEL OUTPUT ---
+lookup_knowledge_base(query="VPN connection troubleshoot AnyConnect remote")
+
+--- MODEL OUTPUT ---
+A VPN connection issue!
+
+Since it's a service-wide issue, I'll check the system status first:
+
+`check_system_status("VPN")`
+
+If the VPN service is up and running, I'll then try to troubleshoot the issue using the knowledge base:
+
+`lookup_knowledge_base(query="VPN connection troubleshoot AnyConnect remote")`
+
+If the issue persists, I'll create a new ticket with a critical priority and escalate it to a specialist:
+
+`create_ticket(category="Network", priority="critical", summary="VPN connection issue", user_email="user_email")`
+`escalate_ticket(ticket_id=<new_ticket_id>, reason="Critical network issue", escalate_to="Network Specialist")`
+
+Let me know if you'd like me to proceed with any of these steps!
+
+--- MODEL OUTPUT ---
+Let's go through the questions:
+
+Q1: Problem type? (auth/KB/outage/hardware/software/security/access/billing/history)
+Answer: KB-network
+
+Q2: Can user self-resolve with KB? YES → lookup_knowledge_base
+Answer: YES
+
+Q3: Possible known outage? "team-wide"/"server issue?"/"since this morning" → check_system_status FIRST
+Answer: no
+
+Q4: Security incident? phishing/suspicious link/malware/renamed files → create_ticket(critical) + escalate
+Answer: no
+
+Q5: Physical work needed? battery/RAM/screen upgrade → schedule_maintenance or create_ticket
+Answer: no
+
+Based on the answers, I will call the following tool:
+
+lookup_knowledge_base(query="VPN connection troubleshoot AnyConnect remote")
+
+This will allow the user to self-resolve the issue by following the steps in the knowledge base article.
+
+--- MODEL OUTPUT ---
+Let's apply the diagnostic framework to this request:
+
+Q1: What is the problem TYPE?
+    AUTH / KB-HOW-TO / OUTAGE / HARDWARE / SOFTWARE / SECURITY / ACCESS / BILLING / HISTORY
+
+Answer: KB-HOW-TO — configuration guidance question.
+
+Q2: Can the user self-resolve with KB guidance?  YES → lookup_knowledge_base FIRST.
+
+Answer: YES — AnyConnect steps are in the KB.
+
+Q3: Could this be a KNOWN SERVICE OUTAGE?
+    "team-wide", "nobody can", "server issue?", "since this morning" → check_system_status FIRST.
+
+Answer: No team-wide symptoms.
+
+Q4: Is this a SECURITY INCIDENT?
+    phishing / suspicious link / malware / renamed files / ransomware
+    → create_ticket(priority=critical) THEN escalate_ticket. NEVER reset_password.
+
+Answer: No security incident.
+
+Q5: PHYSICAL work needed / EXPLICIT upgrade request?
+    battery swap, RAM upgrade, screen replacement → schedule_maintenance or create_ticket.
+
+Answer: No physical work needed.
+
+Based on the answers, I will call the correct tool:
+
+Action: lookup_knowledge_base(query="VPN connection troubleshoot AnyConnect remote")
+
+The user will be guided through the KB article to troubleshoot and resolve the VPN connection issue. If the issue persists, the user can escalate to the IT team for further assistance.
+
+--- MODEL OUTPUT ---
+lookup_knowledge_base(query="Wi-Fi wireless dropping corporate office")
+
+--- MODEL OUTPUT ---
+Based on the query, I would call the tool `lookup_knowledge_base(query="Wi-Fi wireless dropping corporate office troubleshoot")` to see if there are any existing KB articles or how-to guides that can help troubleshoot the issue.
+
+--- MODEL OUTPUT ---
+Let's go through the 5 questions:
+
+Q1: Problem type? (auth/KB/outage/hardware/software/security/access/billing/history) → KB-network
+
+Q2: Can user self-resolve with KB? YES →
+
+Q3: Possible known outage? "team-wide"/"server issue?"/"since this morning" → single-user not outage
+
+Q4: Security incident? phishing/suspicious link/malware/renamed files → no
+
+Q5: Physical work needed? battery/RAM/screen upgrade → no
+
+Since the user can self-resolve with KB and there's no known outage or security incident, I'll call the `lookup_knowledge_base` tool to help the user troubleshoot their Wi-Fi issue.
+
+Action: lookup_knowledge_base(query="Wi-Fi wireless dropping corporate office troubleshoot")
+
+--- MODEL OUTPUT ---
+Let's apply the diagnostic framework to this request:
+
+Q1. What is the problem TYPE?
+    AUTH / KB-HOW-TO / OUTAGE / HARDWARE / SOFTWARE / SECURITY / ACCESS / BILLING / HISTORY
+
+Answer: KB-HOW-TO — single-user intermittent Wi-Fi issue.
+
+Q2. Can the user self-resolve with KB guidance?  YES → lookup_knowledge_base FIRST.
+
+Answer: YES, the user can try to resolve the issue by following the steps in the knowledge base.
+
+Q3. Could this be a KNOWN SERVICE OUTAGE?
+    "nobody", "floor-wide", "since this morning" → check_system_status FIRST.
+
+Answer: No, this is a single-user issue, not a floor-wide or team-wide outage.
+
+Q4. Is this a SECURITY INCIDENT?
+    phishing / suspicious link / malware / renamed files / ransomware
+    → create_ticket(priority=critical) THEN escalate_ticket. NEVER reset_password.
+
+Answer: No, this is not a security incident.
+
+Q5. PHYSICAL work needed / EXPLICIT upgrade request?
+    battery swap, RAM upgrade, screen replacement → schedule_maintenance or create_ticket.
+
+Answer: No, this is a software/driver issue, no physical work is needed.
+
+Based on the answers, I will call the correct tool:
+
+Action: lookup_knowledge_base(query="Wi-Fi wireless dropping corporate office troubleshoot")
+
+The user will be guided to follow the steps in the knowledge base to troubleshoot and potentially resolve the issue. If the issue persists, the user can create a ticket or escalate to a specialist.
+
+--- MODEL OUTPUT ---
+create_ticket(category="access", priority="medium", summary="Access request — Legal SharePoint read access", user_email="<email>")
+
+--- MODEL OUTPUT ---
+I'd call the tool: `create_ticket(category="access", priority="medium", summary="Access request — Legal SharePoint read access", user_email="<email>")`
+
+This tool will create a new support ticket for the user's access request to the Legal department's SharePoint library, with a medium priority and a clear summary.
+
+--- MODEL OUTPUT ---
+Let's go through the 5 questions:
+
+Q1: Problem type? (auth/KB/outage/hardware/software/security/access/billing/history)
+Answer: access
+
+Q2: Can user self-resolve with KB? YES → lookup_knowledge_base
+Answer: no (manager approval and IT provisioning required)
+
+Q3: Possible known outage? "team-wide"/"server issue?"/"since this morning" → check_system_status FIRST
+Answer: no (not a known outage)
+
+Q4: Security incident? phishing/suspicious link/malware/renamed files → create_ticket(critical) + escalate
+Answer: no (not a security incident)
+
+Q5: Physical work needed? battery/RAM/screen upgrade → schedule_maintenance or create_ticket
+Answer: no (no physical work needed)
+
+Since the user needs read access to the Legal department's SharePoint library and it requires manager approval and IT provisioning, I will:
+
+Action: create_ticket(category="access", priority="medium", summary="Access request — Legal SharePoint read access", user_email="<email>")
+
+--- MODEL OUTPUT ---
+Let's apply the diagnostic framework to this request:
+
+Q1. What is the problem TYPE?
+    AUTH / KB-HOW-TO / OUTAGE / HARDWARE / SOFTWARE / SECURITY / ACCESS / BILLING / HISTORY
+
+Answer: ACCESS
+
+Q2. Can the user self-resolve with KB guidance?  YES → lookup_knowledge_base FIRST.
+
+Answer: No, the user needs IT action to grant access.
+
+Q3. Could this be a KNOWN SERVICE OUTAGE?
+    "team-wide", "nobody can", "server issue?", "since this morning" → check_system_status FIRST.
+
+Answer: No, this is a specific access request.
+
+Q4. Is this a SECURITY INCIDENT?
+    phishing / suspicious link / malware / renamed files / ransomware
+    → create_ticket(priority=critical) THEN escalate_ticket. NEVER reset_password.
+
+Answer: No, this is a routine access request.
+
+Q5. PHYSICAL work needed / EXPLICIT upgrade request?
+    battery swap, RAM upgrade, screen replacement → schedule_maintenance or create_ticket.
+
+Answer: No, this is an access request with no physical work needed.
+
+Based on the answers, I would recommend creating a ticket under the "access" category, with a priority of "medium" and a summary of "Access request — Legal SharePoint read access".
+
+Action: create_ticket(category="access", priority="medium", summary="Access request — Legal SharePoint read access", user_email="<email>")
+
+--- MODEL OUTPUT ---
+create_ticket(category="access", priority="medium", summary="Access request — Legal SharePoint read access", user_email="<email>")
+
+--- MODEL OUTPUT ---
+I'd call the tool: `create_ticket(category="access", priority="medium", summary="Access request — Legal SharePoint read access", user_email="<email>")`
+
+This creates a new support ticket to request read access to the Legal department's SharePoint library.
+
+--- MODEL OUTPUT ---
+Let's analyze the user's request!
+
+Q1: Problem type? (auth/KB/outage/hardware/software/security/access/billing/history) → access
+
+Q2: Can user self-resolve with KB? YES → manager approval + IT provisioning required
+
+Action: create_ticket
+
+Here's the ticket creation command:
+```
+create_ticket(category="access", priority="medium", summary="Access request — Legal SharePoint read access", user_email="<email>")
+```
+The ticket will be created with the category "access", priority "medium", and a summary that includes the request details. The user's email will be stored in the ticket for further reference.
+
+--- MODEL OUTPUT ---
+Let's apply the diagnostic framework to this request:
+
+Q1. What is the problem TYPE?
+    AUTH / KB-HOW-TO / OUTAGE / HARDWARE / SOFTWARE / SECURITY / ACCESS / BILLING / HISTORY
+    → ACCESS (permissions change requires manager approval + IT action)
+
+Q2. Can the user self-resolve with KB guidance?  YES → lookup_knowledge_base FIRST.
+    → No, this is a request for access provisioning, not a self-serviceable issue.
+
+Q3. Could this be a KNOWN SERVICE OUTAGE?
+    → No, this is a specific access request.
+
+Q4. Is this a SECURITY INCIDENT?
+    → No, this is a standard access request.
+
+Q5. PHYSICAL work needed / EXPLICIT upgrade request?
+    → No physical work needed, this is an access request.
+
+Since the user cannot self-resolve with KB guidance and this is not a security incident or known outage, we need to create a ticket.
+
+Action: create_ticket(category="access", priority="medium", summary="Access request — Legal SharePoint read access", user_email="<email>")

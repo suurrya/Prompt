@@ -12,7 +12,6 @@ the capability surface constant while only the prompting strategy varies.
 import uuid
 import datetime
 from smolagents import tool
-from knowledge_base import search_knowledge_base
 
 
 # ── Ticket Management ──────────────────────────────────────────────────────
@@ -105,7 +104,7 @@ def lookup_knowledge_base(query: str) -> list:
         'id', 'title', 'tags', and 'content' (the resolution steps).
         Returns an empty list if no relevant articles are found.
     """
-    return search_knowledge_base(query)
+    return []
 
 
 # ── User Account Actions ───────────────────────────────────────────────────

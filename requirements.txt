@@ -12,5 +12,4 @@ python-dotenv>=1.0.0
 
 # NiceGUI web interface
 nicegui>=1.4.0
-
-markdown==3.6
+markdown==3.10.2
