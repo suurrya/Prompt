@@ -4,6 +4,8 @@ import uuid
 from smolagents import OpenAIServerModel
 from smolagents.models import ChatMessageToolCall, ChatMessageToolCallFunction
 
+# TextToolCallingModel
+
 class HFRouterModel(OpenAIServerModel):
     """
     Custom model wrapper for the Hugging Face Inference Router.
@@ -20,13 +22,41 @@ class HFRouterModel(OpenAIServerModel):
         Overrides the standard generate which strips tools_to_call_from.
         This ensures that 'tools' and 'tool_choice' are NOT sent to the HF Router API.
         """
-        return super().generate(
-            messages, 
-            stop_sequences=stop_sequences, 
-            response_format=response_format, 
-            tools_to_call_from=None, 
-            **kwargs
-        )
+        kwargs.pop('tools_to_call_from', None)
+        
+        max_retries = 3
+        base_delay_seconds = 2 
+
+        for attempt in range(max_retries):
+            try:
+                # Attempt to make the API call
+                return super().generate(messages, **kwargs)
+            
+            except Exception as e:
+                error_str = str(e).lower()
+                
+                # Check for known, temporary server-side errors
+                is_transient_error = (
+                    ("degraded" in error_str and "cannot be invoked" in error_str) or
+                    ("500" in error_str and "internal server error" in error_str)
+                )
+
+                if is_transient_error and attempt < max_retries - 1:
+                    delay = base_delay_seconds * (2 ** attempt)
+                    
+                    print(f"\n[WARNING] API reported a transient server error. "
+                          f"Retrying in {delay} seconds... (Attempt {attempt + 1}/{max_retries})")
+                    
+                    time.sleep(delay)
+                    # The loop will then continue to the next attempt
+                else:
+                    # If it's a different error, or we've run out of retries,
+                    # raise the exception to fail the call.
+                    print(f"\n[ERROR] API call failed after {attempt + 1} attempts.")
+                    raise e
+        
+        # This part should ideally not be reached, but it's a safeguard.
+        raise Exception("API call failed permanently after multiple retries.")
 
     def parse_tool_calls(self, message):
         """
@@ -43,26 +73,60 @@ class HFRouterModel(OpenAIServerModel):
 
         content = (message.content or "").strip()
         
+        # 0. Debug Log
+        try:
+            with open("debug_model_output.txt", "a") as f:
+                f.write(f"\n--- MODEL OUTPUT ---\n{content}\n")
+        except:
+            pass
+            
         # 0. Pre-process: Strip markdown code blocks if the entire content is wrapped in one
         # or if there's a block at the end.
         content = re.sub(r"```(?:python|json)?\s*(.*?)\s*```", r"\1", content, flags=re.DOTALL).strip()
 
-        # 1. Handle Arrow/Action format: (→|Action:)\s*tool_name(arg="val")
-        # Mandatory prefix to avoid matching prompt descriptions like "articles (TIER 1)"
+        # 1. Handle Arrow/Action format or raw tool call: (?:→|Action:)?\s*tool_name(arg="val")
+        # We enforce that the tool name matches one of our known valid tools to avoid matching random text
+        valid_tools = {
+            "lookup_knowledge_base", "create_ticket", "escalate_ticket", "reset_password",
+            "get_user_info", "lookup_user_account", "check_system_status", "schedule_maintenance",
+            "process_refund", "store_resolved_ticket", "save_ticket_to_long_term_memory",
+            "get_user_long_term_memory", "get_customer_history"
+        }
+        
         tool_calls = []
-        pattern = r"(?:→|Action:)\s*(\w+)\s*\((.*?)\)"
+        # Optional prefix -> followed by word -> followed by parenthesis
+        pattern = r"(?:→\s*|Action:\s*)?([a-zA-Z_]\w*)\s*\((.*?)\)"
         
         # We use re.finditer to handle sequential tool calls (e.g., security → escalate)
         for match in re.finditer(pattern, content, re.DOTALL):
             name = match.group(1).strip()
+            
+            # Skip if it's not a valid tool name
+            if name not in valid_tools:
+                continue
+                
             args_str = match.group(2).strip()
             
             # Efficiently extract key="value" pairs from the arguments string
-            # Handles: key="val", key='val', key=val
             args = {}
             arg_pattern = r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^,\s\)]+))'
             for k, v1, v2, v3 in re.findall(arg_pattern, args_str):
                 args[k] = v1 or v2 or v3
+
+            # Fallback: if no key=value was found, but there is a string, it might be a positional arg.
+            # Map it to the known single parameter for single-argument tools.
+            if not args and args_str.strip():
+                clean_arg = args_str.strip(' \'"')
+                if name == "check_system_status":
+                    args["service_name"] = clean_arg
+                elif name == "lookup_knowledge_base":
+                    args["query"] = clean_arg
+                elif name == "get_user_info":
+                    args["user_email"] = clean_arg
+                elif name == "lookup_user_account":
+                    args["email"] = clean_arg
+                elif name == "get_user_long_term_memory" or name == "get_customer_history":
+                    args["user_id"] = clean_arg
 
             tool_calls.append(
                 ChatMessageToolCall(
