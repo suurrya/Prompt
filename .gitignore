@@ -1,0 +1,21 @@
+# Ignore environment variables file
+.env
+
+# Ignore node modules
+node_modules
+
+# Python virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+
+# NiceGUI storage
+.nicegui/
+
+# VS Code specific
+.vscode/
+
+# Operating System files
+.DS_Store
