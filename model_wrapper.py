@@ -106,9 +106,7 @@ class TextToolParserModel(OpenAIServerModel):
             
         # 0. Pre-process: Strip markdown code blocks if the entire content is wrapped in one
         # or if there's a block at the end.
-        content = re.sub(r"```(?:python|json)?\s*(.*?)\s*```", r"\1", content, flags=re.DOTALL).strip()
-
-        # 1. Handle Arrow/Action format or raw tool call: (?:→|Action:)?\s*tool_name(arg="val")
+        content = re.sub(r"```(?:python|json)?\s*(.*?)\s*```", r"\1", content, flags=re.DOTALL).strip()        # 1. Handle Arrow/Action format or raw tool call: (?:→|Action:)?\s*tool_name(arg="val")
         # We enforce that the tool name matches one of our known valid tools to avoid matching random text
         valid_tools = {
             "lookup_knowledge_base", "create_ticket", "escalate_ticket", "reset_password",
@@ -118,11 +116,21 @@ class TextToolParserModel(OpenAIServerModel):
         }
         
         tool_calls = []
-        # Optional prefix -> followed by word -> followed by parenthesis
-        pattern = r"(?:→\s*|Action:\s*)?([a-zA-Z_]\w*)\s*\((.*?)\)"
         
-        # We use re.finditer to handle sequential tool calls (e.g., security → escalate)
-        for match in re.finditer(pattern, content, re.DOTALL):
+        # This regex is the "Brain" of our manual tool parsing.
+        # It looks for patterns like: Action: create_ticket(priority="high")
+        # It handles optional prefixes (→ or Action:) and extracts the tool name and its arguments.
+        tool_pattern = re.compile(r"""
+            (?:→\s*|Action:\s*)?    # Optional prefix like '→ ' or 'Action: '
+            ([a-zA-Z_]\w*)          # Capture Group 1: The tool_name (must start with letter/underscore)
+            \s*\(                   # Opening parenthesis
+            (                       # Capture Group 2: The raw arguments string
+                .*?                 # Non-greedy match for everything inside
+            )
+            \)                      # Closing parenthesis
+        """, re.VERBOSE | re.DOTALL)
+        
+        for match in tool_pattern.finditer(content):
             name = match.group(1).strip()
             
             # Skip if it's not a valid tool name
@@ -133,24 +141,37 @@ class TextToolParserModel(OpenAIServerModel):
             
             # Efficiently extract key="value" pairs from the arguments string
             args = {}
-            arg_pattern = r'(\w+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^,\s\)]+))'
-            for k, v1, v2, v3 in re.findall(arg_pattern, args_str):
+            arg_pattern = re.compile(r"""
+                (\w+)               # Capture Group 1: The argument key (e.g., 'priority')
+                \s*=\s*             # Equals sign with optional whitespace
+                (?:                 # Non-capturing group for different value formats
+                    "([^"]*)"       # Capture Group 2: Double-quoted string
+                    |               # OR
+                    '([^']*)'       # Capture Group 3: Single-quoted string
+                    |               # OR
+                    ([^,\s\)]+)     # Capture Group 4: Unquoted value (e.g., numbers, booleans)
+                )
+            """, re.VERBOSE)
+            
+            for k, v1, v2, v3 in arg_pattern.findall(args_str):
                 args[k] = v1 or v2 or v3
 
             # Fallback: if no key=value was found, but there is a string, it might be a positional arg.
             # Map it to the known single parameter for single-argument tools.
             if not args and args_str.strip():
                 clean_arg = args_str.strip(' \'"')
-                if name == "check_system_status":
-                    args["service_name"] = clean_arg
-                elif name == "lookup_knowledge_base":
-                    args["query"] = clean_arg
-                elif name == "get_user_info":
-                    args["user_email"] = clean_arg
-                elif name == "lookup_user_account":
-                    args["email"] = clean_arg
-                elif name == "get_user_long_term_memory" or name == "get_customer_history":
-                    args["user_id"] = clean_arg
+                # These mappings help beginners understand that even if the AI forgets
+                # the "key=" part, we can still recover the intent for simple tools.
+                parameter_mapping = {
+                    "check_system_status": "service_name",
+                    "lookup_knowledge_base": "query",
+                    "get_user_info": "user_email",
+                    "lookup_user_account": "email",
+                    "get_user_long_term_memory": "user_id",
+                    "get_customer_history": "user_id"
+                }
+                if name in parameter_mapping:
+                    args[parameter_mapping[name]] = clean_arg
 
             tool_calls.append(
                 ChatMessageToolCall(
@@ -159,6 +180,10 @@ class TextToolParserModel(OpenAIServerModel):
                     function=ChatMessageToolCallFunction(name=name, arguments=args)
                 )
             )
+            # Enforce single-step execution (max_steps=1).
+            # The LLM may output multiple tool calls in a row (e.g. 1. check_status(...) 2. create_ticket(...)).
+            # We ONLY want the first one so the agent executes it, observes the result, then decides the next step.
+            break
 
         if tool_calls:
             message.tool_calls = tool_calls
@@ -168,9 +193,9 @@ class TextToolParserModel(OpenAIServerModel):
         if '"action":' in content or '"name":' in content:
             try:
                 # Extract the first JSON object from the text block
-                j_match = re.search(r"(\{.*\})", content, re.DOTALL)
-                if j_match:
-                    data = json.loads(j_match.group(1))
+                json_match = re.search(r"(\{.*\})", content, re.DOTALL)
+                if json_match:
+                    data = json.loads(json_match.group(1))
                     name = data.get("action") or data.get("name")
                     args = data.get("parameters") or data.get("arguments") or {}
                     if name:

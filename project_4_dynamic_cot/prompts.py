@@ -149,7 +149,7 @@ FALLBACK_EXAMPLE: dict = {
     "tool_call": 'lookup_knowledge_base(query="<describe issue>")',
 }
 
-# ── TF-IDF selector ───────────────────────────────────────────────────────
+# ── TF-IDF(Term Frequency–Inverse Document Frequency) selector ───────────────────────────────────────────────────────
 
 def _build_cot_index():
     queries = [ex["query"] for ex in COT_EXAMPLE_DATABASE]

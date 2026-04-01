@@ -3,13 +3,21 @@ project_2_chain_of_thought/agents.py
 ======================================
 Experiment 2 — Static Chain-of-Thought (CoT) Prompting
 
-Architecture is identical to Experiment 1 (a static system prompt set once
-at __init__) — the only difference is that the system prompt now contains
-examples with explicit "Thought:" reasoning traces, teaching the model to
-deliberate before selecting a tool.
+Hypothesis:
+  Forcing a model to "think" (reason step-by-step) before selecting a tool
+  significantly improves accuracy, especially for complex or multi-step
+  IT queries where a simple pattern match might focus on the wrong detail.
 
-This additional reasoning step costs a few extra tokens but generally
-improves accuracy for ambiguous queries where simple pattern-matching fails.
+Methodology:
+  1. Identical to Experiment 1 (static system prompt set once at __init__).
+  2. The key difference is that the prompt examples now include explicit 
+     "Thought:" reasoning traces.
+  3. This teaches the model to deliberate on problem classification (outage? 
+     security? etc.) before committing to a tool call.
+
+Pros: Higher reliability and better handling of ambiguous user intents.
+Cons: Slightly higher token cost and latency due to generating the 
+      reasoning trace before the tool call.
 """
 
 import os

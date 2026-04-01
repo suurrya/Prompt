@@ -3,19 +3,23 @@ project_4_dynamic_cot/agents.py
 =================================
 Experiment 4 — Dynamic Chain-of-Thought (CoT) Prompting
 
-The most advanced strategy: combines dynamic example selection (Experiment 3)
-with chain-of-thought reasoning traces (Experiment 2).
+Hypothesis:
+  Combining dynamic example selection (Experiment 3) with full 
+  Chain-of-Thought reasoning traces (Experiment 2) creates the 
+  ultimate "Expert System." The model sees contextually relevant 
+  matches AND is taught to deliberate, resulting in the highest accuracy 
+  and fewset hallucinations for IT helpdesk tasks.
 
-For each incoming query:
-  1. The TF-IDF selector finds the top-k CoT examples most similar to the query.
-  2. A system prompt is assembled that presents those examples with their
-     full Thought: → Action: reasoning traces.
-  3. A fresh ToolCallingAgent is initialised with that just-in-time prompt.
-  4. The agent runs and returns the result.
+Methodology:
+  1. For each incoming query, a TF-IDF selector finds the top-k 
+     CoT-annotated examples (usually 2 to avoid context bloat).
+  2. A system prompt is assembled presenting these examples with their 
+     full Reasoning → Action traces.
+  3. A fresh ToolCallingAgent is initialized with this "just-in-time" prompt.
+  4. The model reasons through its own diagnostic framework before selecting a tool.
 
-Hypothesis: by seeing examples that are BOTH contextually close AND
-demonstrate deliberate reasoning, the model makes the fewest tool-selection
-errors — especially on edge cases and ambiguous queries.
+Pros: Highest reliability; best generalization to "novel" edge cases.
+Cons: Highest token consumption and highest latency of all four strategies.
 """
 
 import os
@@ -74,7 +78,7 @@ class ITHelpdeskAgent:
     def __call__(self, user_query: str) -> str:
         """
         For each query:
-          1. Select the most relevant CoT examples via TF-IDF similarity.
+          1. Select the most relevant CoT examples via TF-IDF(Term Frequency–Inverse Document Frequency) similarity.
           2. Build a system prompt with those examples including Thought: traces.
           3. Initialise a ToolCallingAgent with the tailored prompt.
           4. Run and return the result.

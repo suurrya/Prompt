@@ -1,3 +1,4 @@
+
 """
 ui/app.py  —  IT Helpdesk Prompt Technique Showcase
 =====================================================
@@ -15,7 +16,6 @@ Run:
 """
 
 from __future__ import annotations
-import markdown
 import asyncio, html as _html, os, re, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
@@ -29,85 +29,167 @@ load_dotenv(os.path.join(ROOT, ".env"))
 _executor = ThreadPoolExecutor(max_workers=4)
 _agents: dict[int, object] | None = None
 
-# ── Experiment metadata ────────────────────────────────────────────────────
+# 2. EXPERIMENT SETTINGS
+# ----------------------
+# This dictionary defines the 4 experiments we are demonstrating. 
+# Each has a name, a color, and a short "pitch" explaining its technique.
 EXPERIMENTS = {
-    1: {"short":"Static Few-Shot",       "color":"#6366f1","bg":"#eef2ff","border":"#c7d2fe","icon":"🗂️",
-        "tag":"STATIC · NO REASONING",
-        "pitch":"Fixed examples baked in. The model pattern-matches against a hardcoded query→tool list. "
-                "Fast and predictable, but blind to queries it has never seen."},
-    2: {"short":"Static Chain-of-Thought","color":"#0ea5e9","bg":"#e0f2fe","border":"#bae6fd","icon":"🧠",
-        "tag":"STATIC · WITH REASONING",
-        "pitch":"Same fixed prompt as Exp 1, but every example shows a Thought: step before the tool call. "
-                "The model is taught to reason explicitly before acting."},
-    3: {"short":"Dynamic Few-Shot",       "color":"#10b981","bg":"#d1fae5","border":"#a7f3d0","icon":"🔍",
-        "tag":"DYNAMIC · NO REASONING",
-        "pitch":"At call-time, TF-IDF picks the top-4 examples closest to the user's query. "
-                "Prompt changes every call — more relevant examples, fewer edge-case errors."},
-    4: {"short":"Dynamic Chain-of-Thought","color":"#f59e0b","bg":"#fef3c7","border":"#fde68a","icon":"✨",
-        "tag":"DYNAMIC · WITH REASONING",
-        "pitch":"Combines dynamic selection (Exp 3) with CoT traces (Exp 2). "
-                "Most relevant examples AND step-by-step reasoning — highest expected accuracy."},
+    1: {
+        "short": "Static Few-Shot",
+        "color": "#6366f1",
+        "bg": "#eef2ff",
+        "border": "#c7d2fe",
+        "icon": "🗂️",
+        "tag": "STATIC · NO REASONING",
+        "pitch": "Uses a fixed list of examples. Fast, but limited to what it's been shown.",
+    },
+    2: {
+        "short": "Static Chain-of-Thought",
+        "color": "#0ea5e9",
+        "bg": "#e0f2fe",
+        "border": "#bae6fd",
+        "icon": "🧠",
+        "tag": "STATIC · WITH REASONING",
+        "pitch": "Fixed examples, but each includes 'Thought' steps to show the AI's logic.",
+    },
+    3: {
+        "short": "Dynamic Few-Shot",
+        "color": "#10b981",
+        "bg": "#d1fae5",
+        "border": "#a7f3d0",
+        "icon": "🔍",
+        "tag": "DYNAMIC · NO REASONING",
+        "pitch": "Picks the most relevant examples for your specific question using TF-IDF.",
+    },
+    4: {
+        "short": "Dynamic Chain-of-Thought",
+        "color": "#f59e0b",
+        "bg": "#fef3c7",
+        "border": "#fde68a",
+        "icon": "✨",
+        "tag": "DYNAMIC · WITH REASONING",
+        "pitch": "The most advanced strategy: Dynamic examples PLUS step-by-step reasoning.",
+    },
 }
 
+# 3. HELPER FUNCTIONS FOR DISPLAY
+# -------------------------------
+
+# This helps us pick an emoji icon based on which tool the AI decided to use.
 TOOL_EMOJI = {
-    "lookup_knowledge_base":"📖","create_ticket":"🎫","escalate_ticket":"🚨",
-    "reset_password":"🔑","get_user_info":"👤","lookup_user_account":"💳",
-    "check_system_status":"📡","schedule_maintenance":"🔧","process_refund":"💰",
-    "store_resolved_ticket":"💾","save_ticket_to_long_term_memory":"🗄️",
-    "get_user_long_term_memory":"🕐","get_customer_history":"📋",
+    "lookup_knowledge_base": "📖",
+    "create_ticket": "🎫",
+    "escalate_ticket": "🚨",
+    "reset_password": "🔑",
+    "get_user_info": "👤",
+    "lookup_user_account": "💳",
+    "check_system_status": "📡",
+    "schedule_maintenance": "🔧",
+    "process_refund": "💰",
+    "store_resolved_ticket": "💾",
+    "save_ticket_to_long_term_memory": "🗄️",
+    "get_user_long_term_memory": "🕐",
+    "get_customer_history": "📋",
 }
 
-TOOL_RESPONSES = {
-    "reset_password":   lambda a: f"I've initiated a password reset for {a.get('user_email','the account')} via {a.get('method','email')}.",
-    "lookup_knowledge_base": lambda a: "I've searched the knowledge base: \"" + a.get('query','your issue') + "\".",
-    "create_ticket":    lambda a: f"I've created a {a.get('priority','')} {a.get('category','')} ticket: \"{a.get('summary','Issue reported')}\".",
-    "escalate_ticket":  lambda a: f"I've escalated ticket {a.get('ticket_id','')} to {a.get('escalate_to','the specialist team')}.",
-    "check_system_status": lambda a: f"I've checked the live status of the {a.get('service_name','service')} system.",
-    "get_user_info":    lambda a: f"I've retrieved directory details for {a.get('user_email','the user')}.",
-    "lookup_user_account": lambda a: f"I've looked up the subscription status for {a.get('email','the user')}.",
-    "schedule_maintenance": lambda a: f"I've booked a {a.get('maintenance_type','maintenance')} slot for {a.get('asset_id','the device')}.",
-    "process_refund":   lambda a: f"I've initiated a refund for reservation {a.get('reservation_id','')}.",
-    "store_resolved_ticket": lambda a: "I've saved a resolution summary to this user's history.",
-    "save_ticket_to_long_term_memory": lambda a: "I've archived the full ticket outcome for future reference.",
-    "get_user_long_term_memory": lambda a: f"I've retrieved the full history for user {a.get('user_id','')}.",
-    "get_customer_history": lambda a: f"I've pulled up past contact history for user {a.get('user_id','')}.",
-}
+def get_human_friendly_tool_summary(tool_name: str, arguments: dict) -> str:
+    """
+    This function converts a technical tool call into a nice English sentence.
+    For example: 'create_ticket(priority="high")' becomes 'I've created a high priority ticket.'
+    """
+    # Define templates for each tool
+    templates = {
+        "reset_password": "I've initiated a password reset for {user_email} via {method}.",
+        "lookup_knowledge_base": "I've searched the knowledge base for: \"{query}\".",
+        "create_ticket": "I've created a {priority} {category} ticket: \"{summary}\".",
+        "escalate_ticket": "I've escalated ticket {ticket_id} to {escalate_to}.",
+        "check_system_status": "I've checked the live status of the {service_name} system.",
+        "get_user_info": "I've retrieved directory details for {user_email}.",
+        "lookup_user_account": "I've looked up the account status for {email}.",
+        "schedule_maintenance": "I've booked a {maintenance_type} slot for {asset_id}.",
+        "process_refund": "I've initiated a refund for reservation {reservation_id}.",
+    }
+    
+    # Try to find the template for this tool
+    template = templates.get(tool_name)
+    if not template:
+        # If we don't have a template, just return a generic message
+        return f"I've decided to use the {tool_name} tool."
+    
+    # Use a default value if an argument is missing to avoid crashing
+    safe_args = {
+        "user_email": arguments.get("user_email", "the account"),
+        "method": arguments.get("method", "email"),
+        "query": arguments.get("query", "your issue"),
+        "priority": arguments.get("priority", "medium"),
+        "category": arguments.get("category", "IT"),
+        "summary": arguments.get("summary", "Issue reported"),
+        "ticket_id": arguments.get("ticket_id", "INC-XXXX"),
+        "escalate_to": arguments.get("escalate_to", "the specialist team"),
+        "service_name": arguments.get("service_name", "IT"),
+        "email": arguments.get("email", "the user"),
+        "maintenance_type": arguments.get("maintenance_type", "maintenance"),
+        "asset_id": arguments.get("asset_id", "the device"),
+        "reservation_id": arguments.get("reservation_id", "REF-XXXX"),
+    }
+    
+    # Return the formatted string
+    return template.format(**safe_args)
 
-def _human_response(tool_name: str, args_str: str) -> str:
-    """Convert a tool call into a clean, human-readable sentence."""
-    args: dict = {}
-    if args_str:
-        for part in re.split(r',\s*(?=\w+\s*=)', args_str):
-            kv = part.split("=", 1)
-            if len(kv) == 2:
-                args[kv[0].strip()] = kv[1].strip().strip('"\'')
-    fn = TOOL_RESPONSES.get(tool_name)
-    return fn(args) if fn else f"I've called {tool_name} to handle your request."
+def parse_argument_string(args_str: str) -> dict:
+    """
+    Takes a string like 'user_email="bob@corp.com", method="sms"'
+    and converts it into a Python dictionary: {'user_email': 'bob@corp.com', 'method': 'sms'}
+    """
+    args = {}
+    if not args_str:
+        return args
+        
+    # We split the string by commas that are followed by a 'key=' pattern.
+    # This is slightly complex but ensures we don't break on commas inside quotes.
+    pairs = re.split(r',\s*(?=\w+\s*=)', args_str)
+    for part in pairs:
+        if "=" in part:
+            key, value = part.split("=", 1)
+            # Remove whitespace and quotes from the key and value
+            args[key.strip()] = value.strip().strip('"\'')
+    return args
 
-# ── Agent loading ──────────────────────────────────────────────────────────
-def _load_agents() -> dict[int, object]:
+def load_all_experiment_agents() -> dict[int, object]:
+    """
+    Imports and initializes the 4 different AI agents used in our experiments.
+    """
     import importlib
-    result = {}
-    for exp_id, path in {
-        1:"project_1_few_shot.agents", 2:"project_2_chain_of_thought.agents",
-        3:"project_3_dynamic_few_shot.agents", 4:"project_4_dynamic_cot.agents",
-    }.items():
-        mod = importlib.import_module(path)
-        result[exp_id] = mod.ITHelpdeskAgent(verbose=False)
-    return result
+    agents = {}
+    # Each experiment is located in its own folder
+    experiment_paths = {
+        1: "project_1_few_shot.agents", 
+        2: "project_2_chain_of_thought.agents",
+        3: "project_3_dynamic_few_shot.agents", 
+        4: "project_4_dynamic_cot.agents",
+    }
+    
+    for exp_id, path in experiment_paths.items():
+        # Dynamically import the module
+        module = importlib.import_module(path)
+        # Create an instance of the agent class
+        agents[exp_id] = module.ITHelpdeskAgent(verbose=False)
+    
+    return agents
 
-# ── Dossier parser ─────────────────────────────────────────────────────────
-def _esc(s: str) -> str:
-    return _html.escape(str(s))
+def escape_html_text(text: str) -> str:
+    """A safe way to convert text into HTML-friendly characters (to prevent hacking/errors)."""
+    return _html.escape(str(text))
 
 def parse_dossier(text: str) -> dict:
-    out = {"examples":[],"thought":"","tool_name":"","tool_args_str":"",
-           "error":"","error_type":""}
+    out = {"examples": [], "thought": "", "tool_name": "", "tool_args_str": "",
+           "error": "", "error_type": ""}
 
+    # ── Errors ────────────────────────────────────────────────────────────
     if "❌" in text or text.strip().startswith("⚠️"):
         m = re.search(r"❌\s*Error[:\s]*\n?`?([^`]*)`?", text, re.DOTALL)
         msg = m.group(1).strip() if m else text.strip()
-        if not msg or msg in ('""',"''",""):
+        if not msg or msg in ('""', "''", ""):
             out["error"] = "Agent reached maximum steps without completing the task."
             out["error_type"] = "max_steps"
         elif "max step" in msg.lower():
@@ -118,25 +200,68 @@ def parse_dossier(text: str) -> dict:
             out["error"] = msg or repr(text); out["error_type"] = "general"
         return out
 
+    # ── Examples (Exp 3 & 4) ─────────────────────────────────────────────
     ex = re.search(r"(?:Examples selected|CoT Examples selected)[^\n]*:\n(.*?)\n\n", text, re.DOTALL)
     if ex:
         for line in ex.group(1).split("\n"):
             line = line.strip().lstrip("- ").strip("`").rstrip(".").strip()
-            if line: out["examples"].append(line)
+            if line:
+                out["examples"].append(line)
 
-    tm = re.search(r"```markdown\n(.*?)```", text, re.DOTALL)
-    if tm:
+    # ── Thought — try every known format ─────────────────────────────────
+    # 1. Fenced ```markdown block (Exp 2 & 4 format)
+    tm = re.search(r"```(?:markdown)?\n(.*?)```", text, re.DOTALL)
+    if tm and tm.group(1).strip():
         out["thought"] = tm.group(1).strip()
-    else:
-        it = re.search(r"Thought:\s*(.+?)(?=\n\n|\Z)", text, re.DOTALL)
-        if it: out["thought"] = it.group(1).strip()
 
-    dm = re.search(r"###\s*Decision\s*\n(.*?)(?=###|\Z)", text, re.DOTALL|re.IGNORECASE)
+    # 2. Content between ### Chain of Thought and ### Decision (Exp 2)
+    if not out["thought"]:
+        cot = re.search(
+            r"###\s*(?:Chain of Thought|Final Chain of Thought)\s*\n+(.*?)(?=###|\Z)",
+            text, re.DOTALL | re.IGNORECASE
+        )
+        if cot:
+            candidate = re.sub(r"```(?:markdown)?|```", "", cot.group(1)).strip()
+            if candidate:
+                out["thought"] = candidate
+
+    # 3. Inline "Thought: ..." line (Exp 3 sometimes)
+    if not out["thought"]:
+        it = re.search(r"Thought:\s*(.+?)(?=\n\n|###|\Z)", text, re.DOTALL)
+        if it and it.group(1).strip():
+            out["thought"] = it.group(1).strip()
+
+    # 4. Q1/Q2/Q3 structured reasoning block anywhere in the text (model
+    #    sometimes outputs the diagnostic framework directly without a label)
+    if not out["thought"]:
+        qblock = re.search(
+            r"((?:Q[1-5][:\.\s].*?)(?:\n.*?){2,}(?:→|->|Action:).*)",
+            text, re.DOTALL
+        )
+        if qblock:
+            out["thought"] = qblock.group(1).strip()
+
+    # 5. Any paragraph before ### Decision that isn't a section header
+    #    (catch free-form reasoning the model produced)
+    if not out["thought"]:
+        before_decision = re.search(
+            r"###\s*(?:Dynamic (?:Few-Shot|CoT) Selection[^\n]*\n.*?)?\n\n(.+?)(?=###\s*Decision|\Z)",
+            text, re.DOTALL | re.IGNORECASE
+        )
+        if before_decision:
+            candidate = before_decision.group(1).strip()
+            # Only use it if it looks like deliberation, not just the examples list
+            if len(candidate) > 40 and not candidate.startswith("-"):
+                out["thought"] = candidate
+
+    # ── Tool call — only from the Decision section ────────────────────────
+    dm = re.search(r"###\s*Decision\s*\n(.*?)(?=###|\Z)", text, re.DOTALL | re.IGNORECASE)
     search = dm.group(1) if dm else text
     tm2 = re.search(r"`(\w+)\(([^`]*)\)`", search)
     if tm2:
         out["tool_name"] = tm2.group(1)
         out["tool_args_str"] = tm2.group(2).strip()
+
     return out
 
 # ── HTML builders ──────────────────────────────────────────────────────────
@@ -145,7 +270,7 @@ def _response_card_html(tool_name: str, args_str: str, color: str, latency: floa
                         panel_idx: int) -> str:
     """Main visible card — clean human-readable decision."""
     emoji  = TOOL_EMOJI.get(tool_name, "⚙️")
-    answer = _esc(_human_response(tool_name, args_str))
+    answer = escape_html_text(get_human_friendly_tool_summary(tool_name, parse_argument_string(args_str)))
     cid    = f"details-{panel_idx}"
     return (
         f'<div style="background:{color}12;border:1.5px solid {color}50;border-radius:10px;'
@@ -153,7 +278,7 @@ def _response_card_html(tool_name: str, args_str: str, color: str, latency: floa
         f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">'
         f'<span style="font-size:20px;">{emoji}</span>'
         f'<span style="font-size:13.5px;font-weight:700;color:{color};font-family:monospace;">'
-        f'{_esc(tool_name)}</span>'
+        f'{escape_html_text(tool_name)}</span>'
         f'<span style="margin-left:auto;font-size:10.5px;color:#9ca3af;background:#f3f4f6;'
         f'border-radius:99px;padding:2px 7px;">{latency:.1f}s</span>'
         f'</div>'
@@ -167,50 +292,167 @@ def _response_card_html(tool_name: str, args_str: str, color: str, latency: floa
         f'<div id="{cid}" style="display:none;">'
     )
 
-def _details_html(parsed: dict, color: str) -> str:
-    """Collapsible technical section — examples, reasoning, raw args."""
+def _details_html(parsed: dict, color: str, exp_id: int) -> str:
+    """
+    Educational reasoning section — explains HOW each prompt technique
+    arrived at its decision, with per-technique context.
+    """
     parts = []
+    meta = EXPERIMENTS[exp_id]
 
+    # ── Per-technique "How I reasoned" banner ─────────────────────────────
+    HOW_I_REASONED = {
+        1: ("🗂️ How Static Few-Shot works",
+            "This agent has no reasoning step. It scans its fixed list of "
+            "(query → tool) examples and calls whichever tool the closest "
+            "match demonstrated. No deliberation — pure pattern matching."),
+        2: ("🧠 How Static Chain-of-Thought works",
+            "Before acting, this agent was instructed to work through a "
+            "5-question diagnostic framework (problem type → KB resolvable? "
+            "→ outage? → security? → physical?). The reasoning trace below "
+            "shows exactly how it classified your query."),
+        3: ("🔍 How Dynamic Few-Shot works",
+            "At call-time, TF-IDF cosine similarity ranked the entire example "
+            "database and injected only the most relevant matches into the "
+            "prompt. The examples below are what the agent actually saw — "
+            "not a fixed list, but the closest matches to your specific query."),
+        4: ("✨ How Dynamic Chain-of-Thought works",
+            "This is the most advanced strategy: TF-IDF retrieves the most "
+            "relevant CoT-annotated examples, then the agent reasons through "
+            "the same 5-question framework. The examples AND the reasoning "
+            "trace both adapt to each query."),
+    }
+
+    title, explanation = HOW_I_REASONED[exp_id]
+    parts.append(
+        f'<div style="background:{color}0a;border:1px solid {color}30;'
+        f'border-radius:8px;padding:9px 12px;margin-bottom:10px;">'
+        f'<div style="font-size:11px;font-weight:700;color:{color};margin-bottom:4px;">'
+        f'{title}</div>'
+        f'<div style="font-size:11px;color:#475569;line-height:1.6;">{explanation}</div>'
+        f'</div>'
+    )
+
+    # ── TF-IDF examples (Exp 3 & 4) ──────────────────────────────────────
     if parsed["examples"]:
-        chips = "".join(
-            f'<span style="display:inline-block;background:#fff;border:1px solid {color}40;'
-            f'border-left:3px solid {color};color:#374151;font-size:10.5px;padding:2px 7px;'
-            f'border-radius:4px;margin:2px 3px 2px 0;font-family:monospace;">'
-            f'{_esc(e[:62])}{"…" if len(e)>62 else ""}</span>'
-            for e in parsed["examples"]
-        )
+        chips = ""
+        for e in parsed["examples"]:
+            chips += (
+                f'<div style="background:#fff;border:1px solid {color}30;'
+                f'border-left:3px solid {color};border-radius:4px;'
+                f'padding:4px 9px;margin-bottom:4px;font-size:11px;'
+                f'color:#374151;font-family:monospace;line-height:1.4;">'
+                f'{escape_html_text(e[:80])}{"…" if len(e) > 80 else ""}</div>'
+            )
         parts.append(
-            f'<div style="margin-bottom:8px;">'
-            f'<div style="font-size:9.5px;font-weight:700;color:{color};text-transform:uppercase;'
-            f'letter-spacing:.07em;margin-bottom:4px;">🔍 TF-IDF retrieved examples</div>'
-            f'<div>{chips}</div></div>'
+            f'<div style="margin-bottom:10px;">'
+            f'<div style="font-size:10px;font-weight:700;color:{color};'
+            f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px;">'
+            f'🔍 Examples retrieved for this query</div>'
+            f'<div style="font-size:10.5px;color:#64748b;margin-bottom:5px;">'
+            f'These were selected by TF-IDF similarity — not fixed, but the closest '
+            f'matches from the database to <em>your</em> exact query.</div>'
+            f'{chips}</div>'
+        )
+    elif exp_id in (3, 4):
+        # Explain why no examples are shown even for dynamic agents
+        parts.append(
+            f'<div style="font-size:11px;color:#94a3b8;font-style:italic;margin-bottom:8px;">'
+            f'No retrieved examples available for this response.</div>'
         )
 
+    # ── Reasoning trace ────────────────────────────────────────────────────
     if parsed["thought"]:
-        lines = ""
+        thought_label = {
+            1: "Agent output (no structured reasoning)",
+            2: "Diagnostic reasoning trace",
+            3: "Agent's deliberation",
+            4: "Diagnostic reasoning trace",
+        }.get(exp_id, "Agent reasoning")
+
+        thought_note = {
+            1: "Exp 1 has no reasoning step — any text here is incidental model output.",
+            2: "The agent worked through Q1→Q5 before choosing the tool.",
+            3: "Dynamic selection provided context, but reasoning here is informal.",
+            4: "Both relevant examples AND structured reasoning informed the decision.",
+        }.get(exp_id, "")
+
+        lines_html = ""
         for line in parsed["thought"].split("\n"):
             line = line.strip()
-            if not line: continue
-            if line.startswith(("•","-","*")):
-                lines += (f'<div style="display:flex;gap:5px;margin-bottom:3px;">'
-                          f'<span style="color:{color};flex-shrink:0;">›</span>'
-                          f'<span>{_esc(line.lstrip("•-* "))}</span></div>')
+            if not line:
+                continue
+            # Q1: / Q2: style lines — highlight the question number
+            qm = re.match(r"^(Q[1-5][\.:]\s*)(.+)", line)
+            if qm:
+                lines_html += (
+                    f'<div style="display:flex;gap:6px;margin-bottom:5px;align-items:baseline;">'
+                    f'<span style="font-size:10.5px;font-weight:700;color:{color};'
+                    f'min-width:24px;flex-shrink:0;">{escape_html_text(qm.group(1).rstrip())}</span>'
+                    f'<span style="font-size:11.5px;color:#1e293b;">{escape_html_text(qm.group(2))}</span>'
+                    f'</div>'
+                )
+            # → or -> decision arrows
+            elif re.match(r"^\s*[→\-\>]", line):
+                lines_html += (
+                    f'<div style="display:flex;gap:6px;margin-bottom:5px;margin-top:2px;'
+                    f'background:{color}15;border-radius:5px;padding:4px 7px;">'
+                    f'<span style="font-size:13px;color:{color};">→</span>'
+                    f'<span style="font-size:11.5px;font-weight:600;color:{color};">'
+                    f'{escape_html_text(re.sub(r"^[→\->]+\s*", "", line))}</span>'
+                    f'</div>'
+                )
+            # Bullet points
+            elif line.startswith(("•", "-", "*")):
+                lines_html += (
+                    f'<div style="display:flex;gap:5px;margin-bottom:4px;">'
+                    f'<span style="color:{color};flex-shrink:0;margin-top:1px;">›</span>'
+                    f'<span style="font-size:11.5px;color:#374151;">'
+                    f'{escape_html_text(line.lstrip("•-* "))}</span></div>'
+                )
+            # Numbered lines (1. / 2. etc)
             elif re.match(r"^\d+[\.\:]", line):
-                num, rest = re.split(r"[\.\:]\s*", line, 1) if re.search(r"[\.\:]", line) else (line, "")
-                lines += (f'<div style="display:flex;gap:5px;margin-bottom:3px;">'
-                          f'<span style="color:{color};font-weight:700;flex-shrink:0;">{_esc(num)}.</span>'
-                          f'<span>{_esc(rest)}</span></div>')
+                parts_kv = re.split(r"[\.\:]\s*", line, 1)
+                num  = parts_kv[0]
+                rest = parts_kv[1] if len(parts_kv) > 1 else ""
+                lines_html += (
+                    f'<div style="display:flex;gap:6px;margin-bottom:5px;">'
+                    f'<span style="font-size:10.5px;font-weight:700;color:{color};'
+                    f'min-width:18px;flex-shrink:0;">{escape_html_text(num)}.</span>'
+                    f'<span style="font-size:11.5px;color:#374151;">{escape_html_text(rest)}</span>'
+                    f'</div>'
+                )
             else:
-                lines += f'<div style="margin-bottom:3px;">{_esc(line)}</div>'
+                lines_html += (
+                    f'<div style="font-size:11.5px;color:#374151;margin-bottom:4px;">'
+                    f'{escape_html_text(line)}</div>'
+                )
+
         parts.append(
-            f'<div style="border-left:3px solid {color};background:{color}0d;'
-            f'border-radius:0 6px 6px 0;padding:8px 11px;margin-bottom:8px;">'
-            f'<div style="font-size:9.5px;font-weight:700;color:{color};text-transform:uppercase;'
-            f'letter-spacing:.07em;margin-bottom:5px;">🧠 Chain of thought</div>'
-            f'<div style="font-size:11.5px;color:#374151;line-height:1.6;font-style:italic;">'
-            f'{lines}</div></div>'
+            f'<div style="margin-bottom:10px;">'
+            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">'
+            f'<div style="font-size:10px;font-weight:700;color:{color};'
+            f'text-transform:uppercase;letter-spacing:.07em;">🧠 {thought_label}</div>'
+            f'</div>'
+            f'<div style="font-size:10.5px;color:#64748b;font-style:italic;margin-bottom:6px;">'
+            f'{thought_note}</div>'
+            f'<div style="border-left:3px solid {color};background:{color}0a;'
+            f'border-radius:0 6px 6px 0;padding:9px 12px;line-height:1.6;">'
+            f'{lines_html}</div></div>'
+        )
+    elif exp_id in (2, 4):
+        # These experiments are supposed to have reasoning — explain why it's missing
+        parts.append(
+            f'<div style="background:#fef9c3;border:1px solid #fde047;border-radius:6px;'
+            f'padding:8px 10px;margin-bottom:8px;">'
+            f'<div style="font-size:10.5px;color:#92400e;">'
+            f'⚠️ No reasoning trace captured. The model may not have produced a '
+            f'"Thought:" block this time — this can happen with smaller models that '
+            f'skip the reasoning step. Try upgrading to llama-3.3-70b-instruct.</div>'
+            f'</div>'
         )
 
+    # ── Raw tool arguments ────────────────────────────────────────────────
     if parsed["tool_name"] and parsed["tool_args_str"]:
         arg_rows = ""
         for part in re.split(r',\s*(?=\w+\s*=)', parsed["tool_args_str"]):
@@ -218,16 +460,19 @@ def _details_html(parsed: dict, color: str) -> str:
             if len(kv) == 2:
                 k, v = kv[0].strip(), kv[1].strip().strip('"\'')
                 arg_rows += (
-                    f'<div style="display:flex;gap:6px;align-items:baseline;margin-top:2px;">'
-                    f'<span style="font-size:10px;color:{color};min-width:80px;font-family:monospace;">{_esc(k)}</span>'
+                    f'<div style="display:flex;gap:8px;align-items:baseline;margin-top:3px;">'
+                    f'<span style="font-size:10px;color:{color};min-width:84px;'
+                    f'font-family:monospace;">{escape_html_text(k)}</span>'
                     f'<span style="font-size:10.5px;color:#374151;background:#f9fafb;'
-                    f'border:1px solid #e5e7eb;border-radius:3px;padding:1px 5px;font-family:monospace;">'
-                    f'"{_esc(v)}"</span></div>'
+                    f'border:1px solid #e5e7eb;border-radius:3px;padding:1px 6px;'
+                    f'font-family:monospace;">"{escape_html_text(v)}"</span></div>'
                 )
         parts.append(
-            f'<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;">'
-            f'<div style="font-size:9.5px;font-weight:700;color:#64748b;text-transform:uppercase;'
-            f'letter-spacing:.07em;margin-bottom:4px;">📎 Raw tool arguments</div>'
+            f'<div style="background:#f8fafc;border:1px solid #e2e8f0;'
+            f'border-radius:6px;padding:8px 10px;">'
+            f'<div style="font-size:10px;font-weight:700;color:#64748b;'
+            f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px;">'
+            f'📎 Raw tool arguments</div>'
             f'{arg_rows}</div>'
         )
 
@@ -240,10 +485,10 @@ def _error_card_html(msg: str, etype: str, exp_id: int, latency: float) -> str:
                 "Upgrade to meta/llama-3.3-70b-instruct in agents.py.")
     elif etype == "schema":
         icon, title = "📋", "Wrong tool arguments"
-        body = f"Model called a tool with missing/incorrect parameters: {_esc(msg)}"
+        body = f"Model called a tool with missing/incorrect parameters: {escape_html_text(msg)}"
     else:
         icon, title = "❌", "Agent error"
-        body = _esc(msg) if msg else "An unknown error occurred."
+        body = escape_html_text(msg) if msg else "An unknown error occurred."
     return (
         f'<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:8px;'
         f'padding:11px 13px;margin:0 0 6px;">'
@@ -266,7 +511,7 @@ def render_response(raw: str, exp_id: int, latency: float, panel_idx: int) -> st
                 f'padding:10px 12px;font-size:12px;color:#854d0e;margin:0 0 6px;">'
                 f'⚠️ No tool was called — agent may have reached max steps.</div>')
     html = _response_card_html(parsed["tool_name"], parsed["tool_args_str"], color, latency, panel_idx)
-    html += _details_html(parsed, color)
+    html += _details_html(parsed, color, exp_id)
     html += "</div>"   # close the collapsible div
     return html
 
@@ -276,9 +521,9 @@ async def index():
     global _agents
 
     # ── Per-user persistent storage ──────────────────────────────────────
-    app.storage.user.setdefault("panel_messages", {str(k): [] for k in EXPERIMENTS})
+    app.storage.user.setdefault("experiment_chat_histories", {str(k): [] for k in EXPERIMENTS})
     app.storage.user.setdefault("is_processing", False)
-    panel_messages: dict = app.storage.user["panel_messages"]
+    experiment_chat_histories: dict = app.storage.user["experiment_chat_histories"]
 
     # ── Global styles ─────────────────────────────────────────────────────
     ui.add_head_html("""
@@ -333,7 +578,7 @@ async def index():
     comparison_row.set_visibility(False)
 
     # ── Four panels ───────────────────────────────────────────────────────
-    panel_refs: dict[int, dict] = {}
+    experiment_ui_elements: dict[int, dict] = {}
 
     with ui.element("div").style(
         "display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;"
@@ -363,12 +608,12 @@ async def index():
                     with ui.element("div").style(
                         "padding:10px;display:flex;flex-direction:column;gap:7px;"
                     ) as container:
-                        stored = panel_messages.get(str(exp_id), [])
+                        stored = experiment_chat_histories.get(str(exp_id), [])
                         if stored:
                             for i, msg in enumerate(stored):
                                 if msg["role"] == "user":
                                     ui.html(f'<div style="display:flex;justify-content:flex-end;">'
-                                            f'<div class="bubble-user">{_esc(msg["text"])}</div></div>')
+                                            f'<div class="bubble-user">{escape_html_text(msg["text"])}</div></div>')
                                 else:
                                     raw_val = msg.get("raw", msg.get("text",""))
                                     rendered = render_response(raw_val, exp_id, msg.get("latency",0), i)
@@ -379,7 +624,7 @@ async def index():
                                     '<div style="font-size:11px;color:#94a3b8;">Send a query to see this agent respond</div>'
                                     '</div>')
 
-                        panel_refs[exp_id] = {"container": container, "scroll": scroll}
+                        experiment_ui_elements[exp_id] = {"container": container, "scroll": scroll}
 
     # ── Input bar ─────────────────────────────────────────────────────────
     with ui.element("div").style("background:#fff;border-top:1px solid #e2e8f0;padding:12px 18px;"):
@@ -400,36 +645,25 @@ async def index():
             ui.button(icon="delete_sweep", on_click=lambda: None).props("flat round dense") \
               .style("color:#94a3b8;").tooltip("Clear all (use End Chat button →)")
 
-    # ── Floating End Chat button (bottom-right) ───────────────────────────
-    ui.add_body_html("""
-    <button id="end-chat-fab" onclick="document.dispatchEvent(new CustomEvent('end-chat'))">
-      ✕ End Chat
-    </button>
-    <script>
-      document.addEventListener('end-chat', function() {
-        // Calls the NiceGUI server-side handler via a hidden element
-        if (window.__endChatFn) window.__endChatFn();
-      });
-    </script>
-    """)
+
 
     # ── Helper functions ──────────────────────────────────────────────────
     msg_counter = [0]  # mutable counter for unique collapsible IDs
 
     def _add_user_bubble(exp_id: int, query: str):
-        refs   = panel_refs[exp_id]
-        stored = panel_messages[str(exp_id)]
+        refs   = experiment_ui_elements[exp_id]
+        stored = experiment_chat_histories[str(exp_id)]
         if not stored:
             refs["container"].clear()
         stored.append({"role": "user", "text": query})
         with refs["container"]:
             ui.html(f'<div style="display:flex;justify-content:flex-end;">'
-                    f'<div class="bubble-user">{_esc(query)}</div></div>')
+                    f'<div class="bubble-user">{escape_html_text(query)}</div></div>')
         refs["scroll"].scroll_to(percent=1.0, duration=0.3)
 
     def _add_thinking(exp_id: int):
         c = EXPERIMENTS[exp_id]["color"]
-        refs = panel_refs[exp_id]
+        refs = experiment_ui_elements[exp_id]
         with refs["container"]:
             el = ui.html(
                 f'<div style="display:flex;align-items:center;gap:5px;padding:3px 0;">'
@@ -477,12 +711,12 @@ async def index():
                 ui.html(f'<div style="font-size: 0.95em; color: #1e293b;">{ai_message}</div>')
                 with ui.expansion('Show Reasoning & Details').classes('w-full').props('dense expand-separator').style('color: #6366f1; font-weight: 500; font-size: 0.9em;'):
                     color = EXPERIMENTS[exp_id]["color"]
-                    details = _details_html(parsed, color)
+                    details = _details_html(parsed, color, exp_id)
                     ui.html(details).classes('text-xs overflow-x-auto').style('background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; color: #334155; margin-top: 4px;')
 
     def _add_agent_msg(exp_id: int, raw: str, latency: float):
-        refs   = panel_refs[exp_id]
-        stored = panel_messages[str(exp_id)]
+        refs   = experiment_ui_elements[exp_id]
+        stored = experiment_chat_histories[str(exp_id)]
         stored.append({"role": "agent", "raw": raw, "latency": latency})
         parsed = parse_dossier(raw)
         _render_agent_response(refs["container"], parsed, exp_id, latency)
@@ -513,7 +747,7 @@ async def index():
                         f'background:{meta["bg"]};{border}border-radius:6px;padding:4px 8px;">'
                         f'<span style="font-size:10.5px;font-weight:700;color:{meta["color"]};">Exp {r["exp_id"]}</span>'
                         f'<span style="font-size:13px;">{emoji}</span>'
-                        f'<span style="font-size:11px;font-weight:600;color:#1e293b;font-family:monospace;">{_esc(tool)}</span>'
+                        f'<span style="font-size:11px;font-weight:600;color:#1e293b;font-family:monospace;">{escape_html_text(tool)}</span>'
                         f'<span style="font-size:9.5px;color:#9ca3af;">{r["latency"]:.1f}s</span>'
                         f'</div>'
                     )
@@ -524,10 +758,10 @@ async def index():
 
 
     def _do_end_chat():
-        panel_messages.update({str(k): [] for k in EXPERIMENTS})
+        experiment_chat_histories.update({str(k): [] for k in EXPERIMENTS})
         app.storage.user["is_processing"] = False
         for exp_id in EXPERIMENTS:
-            refs = panel_refs[exp_id]
+            refs = experiment_ui_elements[exp_id]
             refs["container"].clear()
             with refs["container"]:
                 ui.html('<div style="text-align:center;padding:18px 0;">'
@@ -544,15 +778,13 @@ async def index():
         ui.notify("Shutting down server...", type="warning")
         app.shutdown() # This acts like Ctrl+C
 
-    ui.button("End Chat", icon="power_settings_new", on_click=_shutdown_app).style(
+    ui.button("End Session", icon="power_settings_new", on_click=_shutdown_app).style(
         "position: fixed; bottom: 24px; right: 24px; z-index: 50; "
-        "background: #ef4444; color: #f8fafc; border-radius: 99px; "
-        "padding: 10px 20px; font-weight: 600; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+        "background: #334155; color: #f8fafc; border-radius: 99px; "
+        "padding: 10px 20px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"
     ).props("no-caps")
 
-    # Wire end-chat FAB to server-side handler
-    ui.add_body_html("<script>window.__endChatFn = () => {};</script>")
-    ui.on("end-chat", _do_end_chat)
+
     # Also wire the clear button in the input bar
     for btn in [b for b in ui.context.client.elements.values()
                 if getattr(b, '_props', {}).get('icon') == 'delete_sweep']:
@@ -572,7 +804,7 @@ async def index():
             ui.notify("Loading agents…", timeout=2)
             try:
                 _agents = await asyncio.get_event_loop().run_in_executor(
-                    _executor, _load_agents
+                    _executor, load_all_experiment_agents
                 )
             except Exception as exc:
                 ui.notify(f"Failed to load agents: {exc}", type="negative", timeout=0)

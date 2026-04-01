@@ -4,7 +4,7 @@ project_3_dynamic_few_shot/prompts.py (Re-architected for Multi-Layer Dynamism)
 Strategy: Dynamic Few-Shot Prompting
 --------------------------------------
 Philosophy: make the examples CONTEXTUALLY RELEVANT rather than fixed.
-At call-time, TF-IDF cosine similarity ranks the example bank and inserts
+At call-time, TF-IDF(Term Frequency–Inverse Document Frequency) cosine similarity ranks the example bank and inserts
 only the top-k examples most similar to the incoming query.
 
 Design decisions:
@@ -14,8 +14,8 @@ Design decisions:
     — the value here comes from RELEVANCE, not reasoning depth.
   • The prompt TEMPLATE is intentionally lean; all the intelligence comes
     from which examples get selected, not from meta-instructions.
-  • TF-IDF with bigrams (ngram_range=(1,2)) captures two-word phrases like
-    "screen flickering" or "VPN connection" that single-word TF-IDF misses.
+  • TF-IDF(Term Frequency–Inverse Document Frequency) with bigrams (ngram_range=(1,2)) captures two-word phrases like
+    "screen flickering" or "VPN connection" that single-word TF-IDF(Term Frequency–Inverse Document Frequency) misses.
   • top_k=4 balances context richness against prompt bloat.
 
 Hypothesis: dynamic selection outperforms static few-shot on queries that
@@ -169,7 +169,7 @@ EXAMPLE_DATABASE: list[dict] = [
      "tool_call": 'store_resolved_ticket(user_id="<user_id>", summary="<summary>")'},
 ]
 
-# ── TF-IDF selector ───────────────────────────────────────────────────────
+# ── TF-IDF(Term Frequency–Inverse Document Frequency) selector ───────────────────────────────────────────────────────
 
 def _build_index():
     queries = [ex["query"] for ex in EXAMPLE_DATABASE]

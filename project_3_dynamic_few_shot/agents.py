@@ -3,20 +3,23 @@ project_3_dynamic_few_shot/agents.py
 ======================================
 Experiment 3 — Dynamic Few-Shot Prompting
 
-The key architectural difference from Experiments 1 & 2:
-  • __call__() is overridden.
-  • For EACH incoming query it:
-      1. Calls build_system_prompt(user_query) to perform a TF-IDF similarity
-         search and construct a tailored prompt.
-      2. Re-initialises the underlying ToolCallingAgent with that new prompt.
-      3. Runs the agent.
+Hypothesis:
+  Instead of a fixed set of examples, selecting only the most 
+  semantically relevant matches for each query (using TF-IDF similarity) 
+  will provide the model with a better "mental model" of the 
+  requested task, leading to higher accuracy and lower noise.
 
-This "just-in-time" prompting means the examples the model sees are always
-the ones most semantically similar to the actual problem — not a fixed set
-that may be irrelevant.
+Methodology:
+  1. For EACH incoming query, it performs a search against a database 
+     of hundreds of example (query → tool_call) pairs.
+  2. It selects the Top-K (default 4) most similar matches.
+  3. It "just-in-time" constructs a tailored system prompt.
+  4. It initializes a fresh agent with this custom-built prompt.
 
-Trade-off: a small runtime overhead per call (vectoriser transform + agent
-re-init) in exchange for meaningfully better example relevance.
+Pros: Higher contextual relevance; can support a nearly infinite 
+      vocalbulary of tools/scenarios by just adding more examples.
+Cons: Requires a vector store or similarity engine (TF-IDF here) and 
+      adds a small compute overhead to every query.
 """
 
 import os
@@ -46,7 +49,7 @@ class ITHelpdeskAgent:
 
     Overrides __call__() to rebuild the system prompt from scratch for
     every user query, selecting the most contextually relevant examples
-    via TF-IDF cosine similarity before each LLM call.
+    via TF-IDF(Term Frequency–Inverse Document Frequency) cosine similarity before each LLM call.
     """
 
     EXPERIMENT_NAME = "Dynamic Few-Shot"

@@ -3,15 +3,20 @@ project_1_few_shot/agents.py
 =============================
 Experiment 1 — Static Few-Shot Prompting
 
-The ITHelpdeskAgent here is the simplest possible implementation:
-  • Build the system prompt once at class instantiation from the static string
-    defined in prompts.py.
-  • Pass it unchanged to ToolCallingAgent.
-  • Every user query is processed with exactly the same set of examples.
+Hypothesis: 
+  A simple, fixed set of high-quality examples is sufficient for a 
+  large model (like Llama 3) to generalize and solve basic IT 
+  helpdesk queries accurately without needing complex reasoning.
 
-No runtime logic, no dynamic selection. The model must generalize from the
-fixed examples in SYSTEM_PROMPT regardless of how similar they are to the
-actual incoming query.
+Methodology:
+  1. Build the system prompt once at class instantiation from the static string 
+     defined in prompts.py.
+  2. Pass it unchanged to ToolCallingAgent.
+  3. Every user query is processed with exactly the same set of examples.
+
+Pros: Extremely fast (lowest latency), predictable, and easy to maintain.
+Cons: Limited by the "context window" (cannot include too many examples) 
+      and may fail on edge cases not covered by the fixed example set.
 """
 import os
 import sys
