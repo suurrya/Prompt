@@ -30,9 +30,13 @@ This project answers the question:
 
 We test four prompting strategies — Static Few-Shot, Static Chain-of-Thought,
 Dynamic Few-Shot, and Dynamic Chain-of-Thought — each applied to a simulated
-IT Helpdesk agent built on the `smolagents` framework. Every agent shares the
-same LLM backend (`gpt-4o-mini`), the same 13 tools, and the same knowledge
-base. The only thing that changes is what the agent reads in its system prompt.
+IT Helpdesk agent built on the `smolagents` framework. 
+
+**What makes this project unique:**
+- **Heterogeneous Backend**: While compatible with OpenAI, we primarily target **Llama 3 (8B/70B) via NVIDIA NIMs**.
+- **Compatibility Shim**: Since Llama 3 on some endpoints doesn't support native tool-calling, we include a custom `model_wrapper.py` that parses text-to-tools using robust regex.
+- **Pedagogical Focus**: Every agent is documented with its own **Hypothesis** and **Methodology** to help students learn prompting engineering.
+- **Parallel Benchmarking**: A side-by-side UI allows you to watch all 4 agents "think" and act on the same query simultaneously.
 
 Accuracy is measured against a 20-case labelled test suite spanning 8
 categories (auth, network, hardware, software, security, access, status,
@@ -43,35 +47,36 @@ user_info) and 3 difficulty tiers (easy, medium, hard).
 ## 2. Architecture
 
 ```
-it_helpdesk_agents/
-│
 ├── tools.py                        ← 13 shared @tool functions (constant)
-├── knowledge_base.py               ← Static KB articles + keyword search
-├── requirements.txt                ← All dependencies (including nicegui)
-├── .env.example                    ← API key template
+├── model_wrapper.py                ← [NEW] Text-to-Tool "Compatibility Shim" for Llama 3
+├── tool_extract.py                 ← Regex utilities for parsing LLM thoughts
+├── requirements.txt                ← All dependencies (including nicegui & dotenv)
+├── .env                            ← API keys (NVIDIA_API_KEY)
 │
 ├── project_1_few_shot/
-│   ├── prompts.py                  ← Terse few-shot prompt (no reasoning)
-│   └── agents.py                   ← Static-prompt ITHelpdeskAgent
+│   ├── prompts.py                  ← Terse few-shot prompt
+│   └── agents.py                   ← Agent with pedagogical header (Hypothesis/Method)
 │
 ├── project_2_chain_of_thought/
-│   ├── prompts.py                  ← CoT prompt with reasoning framework
-│   └── agents.py                   ← Static-prompt ITHelpdeskAgent
+│   ├── prompts.py                  ← CoT prompt with reasoning traces
+│   └── agents.py                   ← Agent with pedagogical header
 │
 ├── project_3_dynamic_few_shot/
-│   ├── prompts.py                  ← Example DB + TF-IDF selector + template
-│   └── agents.py                   ← __call__ overridden, rebuilds prompt per query
+│   ├── prompts.py                  ← TF-IDF selector + template
+│   └── agents.py                   ← Agent with dynamic prompt rebuild
 │
 ├── project_4_dynamic_cot/
-│   ├── prompts.py                  ← CoT Example DB + TF-IDF selector + template
-│   └── agents.py                   ← __call__ overridden, rebuilds CoT prompt per query
+│   ├── prompts.py                  ← CoT Database + TF-IDF selector
+│   └── agents.py                   ← The "Expert" Agent with dynamic CoT
 │
 ├── evaluation/
 │   ├── test_cases.py               ← 20 labelled test cases
-│   └── run_eval.py                 ← Benchmark runner + report generator
+│   └── run_eval.py                 ← Performance benchmark runner
 │
-└── ui/
-    └── app.py                      ← NiceGUI 4-panel chat interface
+├── ui/
+│   └── app.py                      ← Refactored 4-panel NiceGUI interface
+│
+└── reproduce_errors.py             ← [NEW] Multi-project diagnostic tool
 ```
 
 **Controlled variables (same across all agents):**
@@ -109,11 +114,17 @@ Memory tools use an in-process Python dict (`_LONG_TERM_MEMORY`) as a
 drop-in replacement for Chroma/vector DBs, keeping the benchmark dependency-free
 and reproducible.
 
-### `knowledge_base.py`
-A static list of 15 IT support articles covering common issues (VPN, MFA,
-screen flicker, printer, Office, Teams, etc.). Provides a `search_knowledge_base()`
-function that ranks articles by keyword overlap — deterministic and fast, no
-embedding API call required.
+### `model_wrapper.py`
+This is the **"Brain Surgeon"** of the project. Since many open-source models (like Llama 3) do not support the OpenAI-standard JSON tool-calling format natively on all endpoints, this class:
+1.  **Disables Native Tools**: Forces the LLM into "Text-Only" mode.
+2.  **Parses via Regex**: Scans model output for `Action: tool_name(arg="val")` or `→ tool_name(...)`.
+3.  **Resilient Retries**: Automatically handles transient 500 or "Degraded" errors common in hosted Inference APIs.
+
+### `reproduce_errors.py`
+A developer-first diagnostic script. It allows you to:
+- Run a single query against **all 4 experiments** simultaneously.
+- See the **raw Thought** and **Action** extracted from the agent memory without UI clutter.
+- Debug parsing failures or "Thought" hallucinations in the terminal.
 
 ### `project_*/prompts.py`
 Each experiment has its own `prompts.py` with a philosophy and design tailored
@@ -301,10 +312,12 @@ This installs: `smolagents`, `openai`, `scikit-learn`, `numpy`,
 cp .env.example .env
 ```
 
-Open `.env` and replace the placeholder:
+Open `.env` and fill in your keys. We recommend **NVIDIA NIMs** for the best Llama 3 experience:
 
-```
-OPENAI_API_KEY=sk-your-real-key-here
+```bash
+NVIDIA_API_KEY=nvapi-your-key-here
+# Optional if using OpenAI experiments
+OPENAI_API_KEY=sk-your-key-here
 ```
 
 ---
@@ -356,10 +369,18 @@ Common causes:
 ## 8. Running the NiceGUI Chat UI
 
 ```bash
-python ui/app.py
+# We recommend using a virtual environment
+source .venv/bin/activate
+python3 ui/app.py
 ```
 
-Then open **http://localhost:8080** in your browser.
+Then open **http://localhost:8000** in your browser.
+
+### Key UI Features
+- **Concurrent Execution**: Sends your query to all 4 agents in parallel.
+- **Comparison Banner**: Instantly highlights if agents disagree on which tool to use.
+- **Thought Inspector**: Click "Show Reasoning & Details" to see the "mental framework" each agent applied.
+- **End Session**: A floating action button to safely clear history and shut down the server.
 
 ### What you'll see
 

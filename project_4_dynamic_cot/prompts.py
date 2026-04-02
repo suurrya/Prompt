@@ -151,18 +151,18 @@ FALLBACK_EXAMPLE: dict = {
 
 # ── TF-IDF(Term Frequency–Inverse Document Frequency) selector ───────────────────────────────────────────────────────
 
-def _build_cot_index():
+def build_cot_index():
     queries = [ex["query"] for ex in COT_EXAMPLE_DATABASE]
     vec = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
     mat = vec.fit_transform(queries)
     return vec, mat
 
-_COT_VECTORIZER, _COT_MATRIX = _build_cot_index()
+COT_VECTORIZER, COT_MATRIX = build_cot_index()
 
 
 def select_cot_examples(user_query: str, top_k: int = 3, min_score: float = 0.05) -> list[dict]:
-    qvec = _COT_VECTORIZER.transform([user_query])
-    scores = cosine_similarity(qvec, _COT_MATRIX).flatten()
+    qvec = COT_VECTORIZER.transform([user_query])
+    scores = cosine_similarity(qvec, COT_MATRIX).flatten()
     top_indices = scores.argsort()[::-1][:top_k]
     return [COT_EXAMPLE_DATABASE[i] for i in top_indices if scores[i] >= min_score]
 

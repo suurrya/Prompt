@@ -201,9 +201,9 @@ def parse_dossier(text: str) -> dict:
         return out
 
     # ── Examples (Exp 3 & 4) ─────────────────────────────────────────────
-    ex = re.search(r"(?:Examples selected|CoT Examples selected)[^\n]*:\n(.*?)\n\n", text, re.DOTALL)
-    if ex:
-        for line in ex.group(1).split("\n"):
+    examples = re.search(r"(?:Examples selected|CoT Examples selected)[^\n]*:\n(.*?)\n\n", text, re.DOTALL)
+    if examples:
+        for line in examples.group(1).split("\n"):
             line = line.strip().lstrip("- ").strip("`").rstrip(".").strip()
             if line:
                 out["examples"].append(line)
