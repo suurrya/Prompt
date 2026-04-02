@@ -1,3 +1,8 @@
+# ===================================================================
+# A comprehensive .gitignore file for a Python project.
+# Lines starting with '#' are comments.
+# ===================================================================
+
 # Ignore environment variables file
 .env
 
@@ -20,6 +25,8 @@ __pycache__/
 # Operating System files
 .DS_Store
 
-#output
-.debug_model_output.txt
-.evaluation/results.json
+# Log, Debug, and Result Files
+# These files change constantly and are specific to your local machine.
+debug_model_output.txt
+evaluation/results.json
+*.log
