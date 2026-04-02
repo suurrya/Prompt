@@ -19,8 +19,8 @@ Design decisions:
   • Prompt is intentionally terse so token cost is low.
 """
 
-# ── Tool inventory (compact reference for the LLM) ─────────────────────────
- 
+# Purposes: This string defines the "Menu" of capabilities the AI can choose from.
+# It acts as a cheat-sheet so the AI doesn't have to guess what variables the tools take.
 TOOL_REFERENCE = """\
 TOOLS:
   lookup_knowledge_base(query)                             → self-service KB / how-to articles
@@ -37,6 +37,8 @@ TOOLS:
   get_user_long_term_memory(user_id)                       → retrieve user history
   get_customer_history(user_id)                            → quick past-issues summary"""
 
+# Purposes: These instructions sit ABOVE the examples. They are the "Golden Rules" 
+# that the AI MUST follow if there is a conflict between an example and a live query.
 RULES = """\
 PRIORITY RULES (apply before matching examples):
   R1. OUTAGE FIRST: if user reports team-wide / service-wide issue or asks if something is down
@@ -53,6 +55,9 @@ PRIORITY RULES (apply before matching examples):
   R6. DIRECTORY LOOKUP = get_user_info: "look up account details", "what devices does X have"
       → get_user_info (not lookup_user_account which is for billing/subscription context)."""
 
+# Purposes: This is the core "Knowledge Bank" for Experiment 1.
+# By seeing these 20+ pairs, the model learns the "vibe" of how to translate 
+# messy human language into clean computer code (tool calls).
 FEW_SHOT_EXAMPLES = """\
 EXAMPLES (one per scenario type):
 
@@ -156,6 +161,10 @@ User: "Check the subscription status for bob@company.com."
 User: "What issues has user jdoe had before?"
 → get_customer_history(user_id="jdoe")"""
 
+# Purposes: The "Master Template" that stitches everything together.
+# It starts with the Persona ("You are an IT agent"), then lists the Tools, 
+# then the Rules, and finally the Examples. This creates a massive "context window" 
+# that guides the AI's first and only decision.
 SYSTEM_PROMPT = f"""\
 You are an IT Helpdesk agent. Read the rules, then call the correct tool.
 

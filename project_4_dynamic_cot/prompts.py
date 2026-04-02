@@ -27,11 +27,13 @@ Improvements over original Experiment 4:
      tense summary — matching the inferencing style the model must produce.
 """
 
-from __future__ import annotations
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np # Purposes: Used for efficient numerical operations on tool-call probability vectors.
+from sklearn.feature_extraction.text import TfidfVectorizer # Purposes: The 'Indexer' that converts human queries into mathematical scores.
+from sklearn.metrics.pairwise import cosine_similarity # Purposes: The 'Comparison Brain' that finds the most similar examples in 3D-space.
 
+# Purposes: This is the "Gold Tier" database. 
+# It contains not just tool calls, but the full 'Thought:' traces 
+# teaching the model exactly how to reason using the 5-question framework.
 COT_EXAMPLE_DATABASE: list[dict] = [
 
     # TC-001: lockout (self)
@@ -153,10 +155,13 @@ FALLBACK_EXAMPLE: dict = {
 
 def build_cot_index():
     # saves all the queries in the COT_EXAMPLE_DATABASE in a list
+    # Purposes: Collects every 'query' string from our expert database for indexing.
     queries = [example["query"] for example in COT_EXAMPLE_DATABASE]
     # Creates and configures a tool to convert text into numerical vectors, ignoring common English words and using both single words and two-word phrases.
+    # Purposes: Initializes the 'Translator' tool. Bigrams (1,2) ensure we catch phrases like "VPN down".
     vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
     # Converts the list of queries into a matrix of TF-IDF scores
+    # Purposes: Performs the heavy-lifting of turning every expert query into a vector of numbers.
     tfidf_matrix = vectorizer.fit_transform(queries)
     return vectorizer, tfidf_matrix 
     # vec is a trained, reusable tool permanently stores all the knowledge learned from queries
@@ -170,20 +175,32 @@ COT_VECTORIZER, COT_MATRIX = build_cot_index()
 
 def select_cot_examples(user_query: str, top_k: int = 3, min_score: float = 0.05) -> list[dict]:
     # takes the query text and converts it into a numerical vector.    
+    # Purposes: Converts the USER'S query into the same mathematical format as the database.
     query_vector = COT_VECTORIZER.transform([user_query])
 
     # calculates how similar the new user query vector is to every example vector in our database
+    # Purposes: Measures the 'Angle' between the user query and every database example.
     similarity_scores = cosine_similarity(query_vector, COT_MATRIX).flatten()
 
     # Get the indices of the top k examples
     # This sorts the scores but returns the original indices of the items in sorted order from highest score to lowest and takes the highest 2 examples
+    # Purposes: Ranks the database by similarity and picks the top 'K' candidates.
     top_indices = similarity_scores.argsort()[::-1][:top_k]
 
-    return [COT_EXAMPLE_DATABASE[i] for i in top_indices if similarity_scores[i] >= min_score]
-
+    # Purposes: List to hold only the 'Quality' matches (above the threshold).
+    final_examples = []
+    for i in top_indices:
+        # Only include the example if its score is above our threshold
+        # Purposes: Discards 'garbage' matches that aren't actually relevant.
+        if similarity_scores[i] >= min_score:
+            final_examples.append(COT_EXAMPLE_DATABASE[i])
+            
+    return final_examples
 
 # ── Prompt template ───────────────────────────────────────────────────────
 
+# Purposes: The 'Expert Skeleton' of the prompt. 
+# Includes the Persona, the Diagnostic Framework, and the 5-Question Rules.
 _COT_PROMPT_TEMPLATE = """\
 You are an expert IT Helpdesk agent. For the user's request, answer these 5 questions,
 then call the correct tool:
@@ -210,19 +227,21 @@ AVAILABLE TOOLS:
 {examples_block}
 """
 
-
-def _render_example(ex: dict) -> list[str]:
-    return [
-        f'User: "{ex["query"]}"',
-        f'Thought: {ex["thought"]}',
-        f'Action: {ex["tool_call"]}',
-    ]
-
-
 def build_system_prompt(user_query: str, top_k: int = 3) -> str:
+    # Purposes: Calls our expert selector 'Brain' to find the best CoT examples for this specific query.
     examples = select_cot_examples(user_query, top_k=top_k)
+    # Purposes: If NO similar examples were found (rare), use a generic fallback so the AI isn't blind.
     if not examples:
         examples = [FALLBACK_EXAMPLE]
-    lines = [line for ex in examples for line in _render_example(ex) + [""]]
+    
+    # Purposes: Build the lines of the example block.
+    lines = []
+    # Purposes: Loops through the chosen expert examples to format them for the prompt string.
+    for i, ex in enumerate(examples, 1):
+        lines.append(f'[{i}] User: "{ex["query"]}"')
+        lines.append(f'      Thought: {ex["thought"]}')
+        lines.append(f'      Action: {ex["tool_call"]}')
+        lines.append("")
+    # Purposes: Injects the formatted expert examples into the {examples_block} of our expert template.
     return _COT_PROMPT_TEMPLATE.format(examples_block="\n".join(lines).strip())
 

@@ -23,17 +23,17 @@ As a fallback it regex-scans the response text for any known tool name.
 
 from __future__ import annotations
 
-import argparse
-import importlib
-import json
-import os
-import re
-import sys
-import time
-import traceback
-from datetime import datetime
-from typing import Optional
-from dotenv import load_dotenv
+import argparse # Purposes: Handles command-line flags like --verbose or --experiments.
+import importlib # Purposes: Dynamically loads the agent class from each project folder.
+import json # Purposes: Saves the final accuracy report to results.json.
+import os # Purposes: Manages file paths for .env and results.
+import re # Purposes: The 'Detective' that finds tool names in the agent's text response.
+import sys # Purposes: Configures the python path so imports work correctly.
+import time # Purposes: Measures the 'Latency' (the clock time) for each AI response.
+import traceback # Purposes: Captures and displays detailed error info if an agent crashes.
+from datetime import datetime # Purposes: Timestamps the benchmark run for data logging.
+from typing import Optional # Purposes: Type hinting for the 'Tool Detective' (might return None).
+from dotenv import load_dotenv # Purposes: Loads project-wide environment variables from .env.
 
 # ── Path setup ────────────────────────────────────────────────────────────────
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -102,14 +102,18 @@ def _get_agent_steps(agent_instance) -> list:
     Experiments 1 & 2: agent._agent  (set once at __init__)
     Experiments 3 & 4: agent._last_agent  (set after each __call__)
     """
+    # Purposes: Searches for the 'Memory' of the agent. 
+    # Different experiments store the 'worker bee' in different attributes.
     for attr in ("_last_agent", "_agent"):
         inner = getattr(agent_instance, attr, None)
         if inner is None:
             continue
         # smolagents >= 1.8 → agent.memory.steps
+        # Purposes: The modern way smolagents keeps track of its thoughts and actions.
         if hasattr(inner, "memory") and hasattr(inner.memory, "steps"):
             return list(inner.memory.steps)
         # smolagents 1.x → agent.logs
+        # Purposes: The legacy way agents recorded their history.
         if hasattr(inner, "logs"):
             return list(inner.logs)
     return []
@@ -124,10 +128,12 @@ def _extract_first_tool(agent_instance, response_text: str, debug: bool = False)
       2. Scan any string attribute of each step for a known tool name.
       3. Regex-scan the response text.
     """
+    # Purposes: Grabs the history of what the agent did.
     steps = _get_agent_steps(agent_instance)
     if debug and steps:
         print(f"      [DEBUG] {len(steps)} steps found in agent log")
 
+    # Purposes: Phase 1 - Look for 'Structured' tool calls (the ideal way).
     for step in steps:
         # smolagents >= 1.x: ActionStep.tool_calls → list[ToolCall]
         tool_calls = getattr(step, "tool_calls", None)
@@ -140,12 +146,14 @@ def _extract_first_tool(agent_instance, response_text: str, debug: bool = False)
                 return name
 
         # Older smolagents: ActionStep.tool_name
+        # Purposes: Fallback for older library versions.
         tool_name = getattr(step, "tool_name", None)
         if isinstance(tool_name, str) and tool_name in TOOL_NAMES:
             return tool_name
 
         # Scan string-valued attributes as a last resort
         # IMPORTANT: skip model_input_messages to avoid picking up names from prompt examples
+        # Purposes: Phase 2 - If structured calls aren't there, hunt for tool names in the raw text output.
         for attr in vars(step) if hasattr(step, "__dict__") else []:
             if attr == "model_input_messages":
                 continue
@@ -157,6 +165,7 @@ def _extract_first_tool(agent_instance, response_text: str, debug: bool = False)
                     return tn
 
     # Fallback: scan response text
+    # Purposes: Phase 3 - Ultimate fallback. If nothing's in the log, we just check the final text the agent returned.
     for tn in TOOL_NAMES:
         if re.search(rf"\b{re.escape(tn)}\b", response_text):
             return tn
@@ -178,13 +187,16 @@ def evaluate_agent(
     """Load and run one agent against all test cases. Returns a result dict."""
     module_path, exp_name = EXPERIMENTS[experiment_id]
     bar = "=" * 70
+    # Purposes: Prints the header for this experiment's run.
     print(f"\n{bar}\n  Experiment {experiment_id}: {exp_name}\n{bar}")
 
     # ── Import agent — let errors surface, don't swallow them ────────────
     try:
+        # Purposes: Dynamically imports the agent. This keeps Experiment 1 separated from Experiment 4.
         module = importlib.import_module(f"{module_path}.agents")
         agent = module.ITHelpdeskAgent(verbose=verbose)
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+        # Purposes: A 'Safety Net'. We run the agent on its own thread so we can kill it if it hangs.
         _pool = ThreadPoolExecutor(max_workers=1)
         CALL_TIMEOUT = 15
     except Exception:
@@ -199,12 +211,14 @@ def evaluate_agent(
     case_results = []
     correct_count = 0
 
+    # Purposes: Loops through every test case (the Questions) to see if the AI (the Student) gets them right.
     for tc in test_cases:
         print(f"  [{tc['id']}] {tc['query'][:62]}…", end=" ", flush=True)
         t0 = time.perf_counter()
         error_detail: Optional[str] = None
 
         try:
+            # Purposes: Sends the query to the agent and waits for a response (with a 15-second cutoff).
             future = _pool.submit(agent, tc["query"])
             response = future.result(timeout=CALL_TIMEOUT)
         except FuturesTimeout:
@@ -219,7 +233,8 @@ def evaluate_agent(
                 print()
                 traceback.print_exc()
 
-        latency = time.perf_counter() - t0
+        latency = time.perf_counter() - t0 # Purposes: Measures how many seconds the agent 'thought' for.
+        # Purposes: The moment of truth. Extracts what tool the agent picked and compares it to the answer key.
         actual_tool = _extract_first_tool(agent, response, debug=debug)
         correct = actual_tool == tc["expected_tool"]
         if correct:
@@ -240,6 +255,7 @@ def evaluate_agent(
             "error": error_detail,
         })
 
+    # Purposes: Final Scorecard. Calculates the percentage of correct answers.
     accuracy = correct_count / len(test_cases) if test_cases else 0.0
     print(f"\n  → Accuracy: {correct_count}/{len(test_cases)} = {accuracy:.0%}")
     return {
@@ -384,6 +400,7 @@ def main():
 
     output_path = os.path.join(ROOT, args.output)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # Purposes: The 'Report Preservation'. Saves all the hard work we just did so it can be viewed in the UI.
     with open(output_path, "w") as f:
         json.dump({
             "run_at": datetime.now().isoformat(),
@@ -391,6 +408,7 @@ def main():
             "test_case_count": len(test_cases),
             "results": all_results,
         }, f, indent=2)
+    # Purposes: Final message to the developer.
     print(f"Results saved → {output_path}\n")
 
 

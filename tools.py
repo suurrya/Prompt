@@ -9,12 +9,15 @@ Adding or removing a tool here instantly affects every agent — keeping
 the capability surface constant while only the prompting strategy varies.
 """
 
-import uuid
-import datetime
-from smolagents import tool
+import uuid # Purposes: To generate unique, non-repeating identifiers for tickets and resets.
+import datetime # Purposes: To capture the exact moment an action occurs for audit logs.
+# Imports the @tool decorator from the smolagents library. 
+# This is what turns a regular Python function into a "Tool" that an AI can understand and use.
+from smolagents import tool # Purposes: Required to register these functions with the AI framework.
 
 
-# ── Ticket Management ──────────────────────────────────────────────────────
+# Section 2: Ticket Management Tools
+# This category handles the creation and escalation of IT support tickets.
 
 @tool
 def create_ticket(
@@ -26,7 +29,7 @@ def create_ticket(
     """
     Creates a new IT support ticket in the helpdesk system.
 
-    Use this tool when a user reports a problem that requires tracking,
+    Purpose: Use this tool when a user reports a problem that requires tracking,
     follow-up, or hands-on work by an IT technician — especially hardware
     faults, access provisioning, or issues not resolved by the knowledge base.
 
@@ -41,15 +44,18 @@ def create_ticket(
         A dict containing the generated ticket_id, category, priority,
         summary, user_email, status ('open'), and created_at timestamp.
     """
+    # Purposes: Generates a unique Ticket ID using a hex string from uuid4 for tracking.
     ticket_id = f"INC-{uuid.uuid4().hex[:6].upper()}"
+    # The final dictionary that represents the ticket data.
+    # Purposes: Returns a structured record of the issue to be stored in the helpdesk database.
     return {
-        "ticket_id": ticket_id,
-        "category": category,
-        "priority": priority,
-        "summary": summary,
-        "user_email": user_email,
-        "status": "open",
-        "created_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "ticket_id": ticket_id, # The unique ID generated above.
+        "category": category, # The classification of the issue (e.g., hardware).
+        "priority": priority, # How urgent the issue is.
+        "summary": summary, # A brief description for the technician.
+        "user_email": user_email, # Who reported the problem.
+        "status": "open", # Initial state for all new tickets.
+        "created_at": datetime.datetime.utcnow().isoformat() + "Z", # ISO timestamp for auditing.
     }
 
 
@@ -72,17 +78,25 @@ def escalate_ticket(ticket_id: str, reason: str, escalate_to: str) -> dict:
 
     Returns:
         A dict with ticket_id, escalated_to, reason, and escalated_at timestamp.
+
+    What it does: 
+    1. Records which team the ticket is being sent to.
+    2. Stores the reason for the escalation.
+    3. Updates the status to 'escalated' and adds a timestamp.
     """
+    # Purposes: Returns a confirmation of the escalation, marking the ticket as handled by a specialist.
     return {
-        "ticket_id": ticket_id,
-        "escalated_to": escalate_to,
-        "reason": reason,
-        "escalated_at": datetime.datetime.utcnow().isoformat() + "Z",
-        "status": "escalated",
+        "ticket_id": ticket_id, # Reference to the original ticket.
+        "escalated_to": escalate_to, # The specialist team taking over.
+        "reason": reason, # Why the level-1 agent couldn't solve it.
+        "escalated_at": datetime.datetime.utcnow().isoformat() + "Z", # Timestamp of the hand-off.
+        "status": "escalated", # New status to lock the ticket for L1 agents.
     }
 
 
 # ── Knowledge Base ─────────────────────────────────────────────────────────
+# Section 3: Knowledge Base Tools
+# These tools allow the AI to search for self-service information before creating a ticket.
 
 @tool
 def lookup_knowledge_base(query: str) -> list:
@@ -104,6 +118,8 @@ def lookup_knowledge_base(query: str) -> list:
         'id', 'title', 'tags', and 'content' (the resolution steps).
         Returns an empty list if no relevant articles are found.
     """
+    # Purposes: In this experiment, we return an empty list to simulate a search with no results,
+    # forcing the agent to decide between other tools or creating a ticket.
     return []
 
 
@@ -129,12 +145,13 @@ def reset_password(user_email: str, method: str = "email") -> dict:
         A dict confirming the reset was initiated, with user_email,
         method, a temporary_ticket_id for audit purposes, and timestamp.
     """
+    # Purposes: Triggers the backend reset workflow and returns the status to the user.
     return {
-        "user_email": user_email,
-        "action": "password_reset_initiated",
-        "method": method,
-        "temporary_ticket_id": f"PWD-{uuid.uuid4().hex[:6].upper()}",
-        "initiated_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "user_email": user_email, # The account being reset.
+        "action": "password_reset_initiated", # Status flag for the UI.
+        "method": method, # How the reset link is being delivered.
+        "temporary_ticket_id": f"PWD-{uuid.uuid4().hex[:6].upper()}", # Audit ID for the reset event.
+        "initiated_at": datetime.datetime.utcnow().isoformat() + "Z", # Timestamp for security logs.
     }
 
 
@@ -155,14 +172,16 @@ def get_user_info(user_email: str) -> dict:
         account_status ('active'/'disabled'/'locked'), and assigned_devices list.
     """
     # Simulated directory response — replace with real LDAP/Graph API call.
+    # Purposes: Extracts the left side of the email to create a display name.
     local_part = user_email.split("@")[0]
+    # Purposes: Returns the user's full profile to the agent for context-building.
     return {
-        "user_email": user_email,
-        "full_name": local_part.replace(".", " ").title(),
-        "department": "Engineering",
-        "manager_email": f"manager@{user_email.split('@')[1]}",
-        "account_status": "active",
-        "assigned_devices": ["LAPTOP-7F3A", "PHONE-9C2B"],
+        "user_email": user_email, # Primary key.
+        "full_name": local_part.replace(".", " ").title(), # Formatted name (e.g., 'Alice Smith').
+        "department": "Engineering", # Useful for routing tickets.
+        "manager_email": f"manager@{user_email.split('@')[1]}", # Escalation contact.
+        "account_status": "active", # Verifies if the user is even allowed to make requests.
+        "assigned_devices": ["LAPTOP-7F3A", "PHONE-9C2B"], # Inventory for hardware checks.
     }
 
 
@@ -187,6 +206,7 @@ def check_system_status(service_name: str) -> dict:
         incident exists.
     """
     # Simulated status map — in production, query a monitoring API.
+    # Purposes: A lookup table simulating real-time system health checks.
     status_map = {
         "email": "operational",
         "vpn": "operational",
@@ -196,18 +216,21 @@ def check_system_status(service_name: str) -> dict:
         "erp": "operational",
         "crm": "outage",
     }
+    # Purposes: Fetches the status; defaults to 'operational' if the service is unknown.
     status = status_map.get(service_name.lower(), "operational")
+    # Purposes: Prepares the basic response object.
     result = {
         "service_name": service_name,
         "status": status,
-        "last_checked": datetime.datetime.utcnow().isoformat() + "Z",
+        "last_checked": datetime.datetime.utcnow().isoformat() + "Z", # Freshness indicator.
     }
+    # Purposes: If a known issue exists, provide the Incident ID and ETA to prevent duplicate tickets.
     if status == "outage":
         result["incident_id"] = f"INC-ACTIVE-{service_name.upper()[:3]}"
-        result["eta_minutes"] = 45
+        result["eta_minutes"] = 45 # Estimated resolution time.
     elif status == "degraded":
         result["incident_id"] = f"INC-DEGRADED-{service_name.upper()[:3]}"
-        result["eta_minutes"] = 20
+        result["eta_minutes"] = 20 # Performance recovery time.
     return result
 
 
@@ -238,26 +261,29 @@ def schedule_maintenance(
         scheduled_date (may differ from preferred if unavailable),
         location, and user_email.
     """
+    # Purposes: Books the appointment in the maintenance database.
     return {
-        "maintenance_id": f"MNT-{uuid.uuid4().hex[:6].upper()}",
-        "asset_id": asset_id,
-        "maintenance_type": maintenance_type,
-        "requested_date": preferred_date,
-        "scheduled_date": preferred_date,  # Assume slot is available.
-        "location": "IT Workshop — Floor 2",
-        "user_email": user_email,
-        "status": "scheduled",
+        "maintenance_id": f"MNT-{uuid.uuid4().hex[:6].upper()}", # Unique booking number.
+        "asset_id": asset_id, # The hardware being fixed.
+        "maintenance_type": maintenance_type, # The scope of work.
+        "requested_date": preferred_date, # User's requested slot.
+        "scheduled_date": preferred_date,  # Assume slot is available for this simulation.
+        "location": "IT Workshop — Floor 2", # Instructions for the user.
+        "user_email": user_email, # Contact for logistics.
+        "status": "scheduled", # Initial state for the appointment.
     }
 
 
 # ── Convenience export ─────────────────────────────────────────────────────
 
+# Purposes: This export list is what the agents actually "see". 
+# By adding a function to this list, we give every agent the ability to use that tool.
 ALL_TOOLS = [
-    create_ticket,
-    escalate_ticket,
-    lookup_knowledge_base,
-    reset_password,
-    get_user_info,
-    check_system_status,
-    schedule_maintenance,
+    create_ticket, # Capability 1: Formal tracking.
+    escalate_ticket, # Capability 2: Priority tiering.
+    lookup_knowledge_base, # Capability 3: Self-service.
+    reset_password, # Capability 4: Account recovery.
+    get_user_info, # Capability 5: Identity context.
+    check_system_status, # Capability 6: Outage detection.
+    schedule_maintenance, # Capability 7: Hardware repair.
 ]

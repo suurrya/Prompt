@@ -23,6 +23,9 @@ ambiguous queries — especially the "outage vs. local fault" distinction
 and the "KB-resolvable vs. ticket-required" boundary.
 """
 
+# Purposes: This is the "Mental Checklist" we force the AI to run through.
+# By answering these 5 questions, the model is less likely to jump to the wrong 
+# tool (like creating a ticket when an outage check is needed).
 REASONING_FRAMEWORK = """\
 ═══════════════════════════════════════════════════════════
 DIAGNOSTIC FRAMEWORK — answer ALL 5 before picking a tool
@@ -49,6 +52,9 @@ SAFETY RULES:
   • "colleague says I'm locked out" → reset_password (the user cannot access the portal themselves).
 ═══════════════════════════════════════════════════════════"""
 
+# Purposes: These examples are "Worked Solutions". They show the model 
+# exactly how to use the Diagnostic Framework on real-world IT tickets.
+# This "Chain-of-Thought" logic is what makes Experiment 2 smarter than Experiment 1.
 STATIC_COT_EXAMPLES = """\
 ════════════════════════════════════
 WORKED EXAMPLES — all 20 test scenarios
@@ -228,6 +234,9 @@ Thought:
 Action: get_user_info(user_email="alice.jones@company.com")
 """
 
+# Purposes: The core System Instructions. It tells the model it is a "Senior Agent"
+# and provides the Tools, Framework, and Examples in one single document.
+# This creates the "Brain" of the Static CoT agent.
 SYSTEM_PROMPT = f"""\
 You are a senior IT Helpdesk agent. Apply the diagnostic framework to EVERY request,
 then call the correct tool.

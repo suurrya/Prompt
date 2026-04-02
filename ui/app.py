@@ -16,11 +16,12 @@ Run:
 """
 
 from __future__ import annotations
-import asyncio, html as _html, os, re, sys, time
-from concurrent.futures import ThreadPoolExecutor
-from dotenv import load_dotenv
-from nicegui import app, ui
-import markdown
+import importlib # Purposes: Used to dynamically 'hot-load' the 4 different agent experiments at runtime.
+import asyncio, html as _html, os, re, sys, time # Purposes: Core utilities for async runs, security, and timing comparisons.
+from concurrent.futures import ThreadPoolExecutor # Purposes: Allows running multiple AI calls in parallel without blocking the UI.
+from dotenv import load_dotenv # Purposes: Loads project-wide environment variables from .env.
+from nicegui import app, ui # Purposes: The 'Web Engine' that renders the beautiful, reactive dashboard.
+import markdown # Purposes: Converts technical AI thoughts into pretty, readable text.
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -33,6 +34,8 @@ _agents: dict[int, object] | None = None
 # ----------------------
 # This dictionary defines the 4 experiments we are demonstrating. 
 # Each has a name, a color, and a short "pitch" explaining its technique.
+# Purposes: The "Central Config" for the UI. 
+# It maps each project folder to a visual style (colors, icons, and 'pitch' text).
 EXPERIMENTS = {
     1: {
         "short": "Static Few-Shot",
@@ -159,7 +162,6 @@ def load_all_experiment_agents() -> dict[int, object]:
     """
     Imports and initializes the 4 different AI agents used in our experiments.
     """
-    import importlib
     agents = {}
     # Each experiment is located in its own folder
     experiment_paths = {
@@ -182,6 +184,11 @@ def escape_html_text(text: str) -> str:
     return _html.escape(str(text))
 
 def parse_dossier(text: str) -> dict:
+    """
+    Purposes: This is the 'Regex Extraction Engine'.
+    It takes the raw text 'dossier' from the agents and breaks 
+    it back into data (the reasoning, the tool name, and the arguments).
+    """
     out = {"examples": [], "thought": "", "tool_name": "", "tool_args_str": "",
            "error": "", "error_type": ""}
 
@@ -792,17 +799,22 @@ async def index():
         break
 
     # ── Send handler ─────────────────────────────────────────────────────
+    # Purposes: The 'Async Orchestrator'. This function triggers all 4 agent experiments simultaneously.
     async def handle_send():
         global _agents
+        # Purposes: Prevents 'Double Sending' if a request is already in progress.
         if app.storage.user.get("is_processing"):
             return
         query = (query_input.value or "").strip()
+        # Purposes: Guard clause for empty queries.
         if not query:
             ui.notify("Please type a question first.", type="warning"); return
 
+        # Purposes: Lazy-loading logic. Only loads agents from disk the first time you click Send.
         if _agents is None:
             ui.notify("Loading agents…", timeout=2)
             try:
+                # Purposes: Offloads the slow 'import' calls to a background thread to keep the UI smooth.
                 _agents = await asyncio.get_event_loop().run_in_executor(
                     _executor, load_all_experiment_agents
                 )
@@ -819,24 +831,29 @@ async def index():
             _add_user_bubble(exp_id, query)
         thinking = {exp_id: _add_thinking(exp_id) for exp_id in EXPERIMENTS}
 
+        # Purposes: The 'Parallel Engine'. 
+        # This nested function defines how a SINGLE experiment is run and recorded.
         async def _run(exp_id: int) -> dict:
             loop = asyncio.get_event_loop()
-            t0 = time.perf_counter()
+            t0 = time.perf_counter() # Purposes: Starts the stopwatch for this experiment.
             try:
+                # Purposes: The core AI call. Runs in a background thread to prevent UI freezing.
                 raw = await loop.run_in_executor(_executor, _agents[exp_id], query)
             except Exception as exc:
                 raw = f"❌ Error:\n`{str(exc) or repr(exc)}`"
-            latency = time.perf_counter() - t0
-            thinking[exp_id].delete()
-            _add_agent_msg(exp_id, str(raw), latency)
-            parsed = parse_dossier(str(raw))
+            latency = time.perf_counter() - t0 # Purposes: Stops the stopwatch.
+            thinking[exp_id].delete() # Purposes: Removes the 'thinking...' dots.
+            _add_agent_msg(exp_id, str(raw), latency) # Purposes: Renders the final dossier card.
+            parsed = parse_dossier(str(raw)) # Purposes: Converts text result into data for the summary banner.
             return {"exp_id": exp_id, "tool": parsed["tool_name"],
                     "latency": latency, "is_error": bool(parsed["error"])}
 
+        # Purposes: The 'Racing Logic'. runs all 4 _run() functions at once.
         results = sorted(
             list(await asyncio.gather(*[_run(eid) for eid in EXPERIMENTS])),
             key=lambda x: x["exp_id"]
         )
+        # Purposes: Shows the '⚡ Tool decision comparison' banner at the top.
         _show_comparison(results)
         app.storage.user["is_processing"] = False
         query_input.enable(); send_btn.enable()

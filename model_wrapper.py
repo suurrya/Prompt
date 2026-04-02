@@ -1,8 +1,9 @@
-import re
-import json
-import uuid
-from smolagents import OpenAIServerModel
-from smolagents.models import ChatMessageToolCall, ChatMessageToolCallFunction
+import re # Purposes: Used to search and extract tool patterns (Action: ...) from raw text.
+import json # Purposes: Fallback parser for cases where the model outputs structured JSON.
+import uuid # Purposes: Generates unique session IDs for each tool call in the framework.
+import time # Purposes: Provides the 'sleep' function for the API retry logic.
+from smolagents import OpenAIServerModel # Purposes: The base class that allows us to connect to the NVIDIA/OpenAI API.
+from smolagents.models import ChatMessageToolCall, ChatMessageToolCallFunction # Purposes: Data structures used to represent tools in the agent's memory.
 
 # TextToolParserModel
 
@@ -38,7 +39,8 @@ class TextToolParserModel(OpenAIServerModel):
     This wrapper forces prompt-based tool calling and handles manual parsing.
     """
     
-    # Explicitly indicate that this model doesn't support native OpenAI-style tool calls
+    # Purposes: Forces the agent framework to use "Text Mode" instead of "JSON Mode".
+    # This ensures that the system prompt includes tool definitions as text instructions.
     supports_native_tools = False
 
     def generate(self, messages, stop_sequences=None, response_format=None, tools_to_call_from=None, **kwargs):
@@ -48,9 +50,12 @@ class TextToolParserModel(OpenAIServerModel):
         """
         kwargs.pop('tools_to_call_from', None)
         
+        # Purposes: Standard LLM APIs might error out; we set a 3-attempt limit for robustness.
         max_retries = 3
+        # Purposes: The starting wait time (2 seconds) before retrying an API call.
         base_delay_seconds = 2 
 
+        # Purposes: Loop through the retry logic until success or max_retries reached.
         for attempt in range(max_retries):
             try:
                 # Attempt to make the API call
@@ -79,7 +84,7 @@ class TextToolParserModel(OpenAIServerModel):
                     print(f"\n[ERROR] API call failed after {attempt + 1} attempts.")
                     raise e
         
-        # This part should ideally not be reached, but it's a safeguard.
+        # Purposes: Final fail-safe if all retries are exhausted.
         raise Exception("API call failed permanently after multiple retries.")
 
     def parse_tool_calls(self, message):
@@ -107,7 +112,8 @@ class TextToolParserModel(OpenAIServerModel):
         # 0. Pre-process: Strip markdown code blocks if the entire content is wrapped in one
         # or if there's a block at the end.
         content = re.sub(r"```(?:python|json)?\s*(.*?)\s*```", r"\1", content, flags=re.DOTALL).strip()        # 1. Handle Arrow/Action format or raw tool call: (?:→|Action:)?\s*tool_name(arg="val")
-        # We enforce that the tool name matches one of our known valid tools to avoid matching random text
+        # Purposes: A whitelist of tool names. If the AI hallucinates a name NOT in this list, 
+        # the parser will ignore it, preventing "Undefined Tool" errors.
         valid_tools = {
             "lookup_knowledge_base", "create_ticket", "escalate_ticket", "reset_password",
             "get_user_info", "lookup_user_account", "check_system_status", "schedule_maintenance",
@@ -115,6 +121,7 @@ class TextToolParserModel(OpenAIServerModel):
             "get_user_long_term_memory", "get_customer_history"
         }
         
+        # Purposes: A temporary list to store any valid tool calls we find in the text.
         tool_calls = []
         
         # This regex is the "Brain" of our manual tool parsing.
@@ -137,6 +144,7 @@ class TextToolParserModel(OpenAIServerModel):
             if name not in valid_tools:
                 continue
                 
+            # Purposes: Group 2 captures the entire content inside the parentheses for deeper parsing.
             args_str = match.group(2).strip()
             
             # Efficiently extract key="value" pairs from the arguments string
@@ -180,9 +188,7 @@ class TextToolParserModel(OpenAIServerModel):
                     function=ChatMessageToolCallFunction(name=name, arguments=args)
                 )
             )
-            # Enforce single-step execution (max_steps=1).
-            # The LLM may output multiple tool calls in a row (e.g. 1. check_status(...) 2. create_ticket(...)).
-            # We ONLY want the first one so the agent executes it, observes the result, then decides the next step.
+            # Purposes: We 'break' after the first tool call to enforce single-step execution (max_steps=1).
             break
 
         if tool_calls:

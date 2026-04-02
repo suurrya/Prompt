@@ -17,6 +17,9 @@ Coverage:
   • Includes edge cases that separate CoT from non-CoT agents
 """
 
+# Purposes: This is the 'Gold Standard Dataset'. 
+# It contains the correct answers (the Ground Truth) that we use
+# to measure how accurate each of the 4 agents is.
 TEST_CASES: list[dict] = [
     # ── Authentication / Password (3 cases) ──────────────────────────────
     {

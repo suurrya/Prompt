@@ -1,7 +1,7 @@
-import os
-import sys
-import json
-import re
+import os # Purposes: Used to manage file paths for local .env files.
+import sys # Purposes: Configures the python path so we can import 'tools' and 'model_wrapper' from the root.
+import json # Purposes: Standard library for data formatting.
+import re # Purposes: The 'Detective' that finds the AI's thoughts in its raw output.
 
 # Add the current directory to sys.path so we can import projects
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -32,6 +32,9 @@ EXPERIMENTS = [
     {"id": 4, "class": Agent4, "name": "Dynamic CoT"},
 ]
 
+# Purposes: The 'Diagnostic Loop'. 
+# This function runs a single user query against 1 or all 4 of the experiments.
+# It is used by developers to 'Debug' why an agent might be failing a specific test case.
 def run_test(query: str, experiment_id: int = None):
     """
     Runs a single query against one or all 4 agent experiments.

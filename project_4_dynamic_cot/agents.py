@@ -22,12 +22,12 @@ Pros: Highest reliability; best generalization to "novel" edge cases.
 Cons: Highest token consumption and highest latency of all four strategies.
 """
 
-import os
-import sys
-import json
+import os # Purposes: Used to retrieve secure API credentials for NVIDIA.
+import sys # Purposes: Adjusts the path so we can import 'tools' and 'model_wrapper' from root.
+import json # Purposes: Standard library for cleaning and formatting tool arguments.
 
-from dotenv import load_dotenv
-from smolagents import ToolCallingAgent, AgentMaxStepsError
+from dotenv import load_dotenv # Purposes: Loads project-wide environment variables from .env.
+from smolagents import ToolCallingAgent, AgentMaxStepsError # Purposes: The worker engine that executes the final plan.
 
 # Allow running from any working directory.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -130,6 +130,7 @@ class ITHelpdeskAgent:
                 model=self._model,
                 max_steps=1,
                 verbosity_level=1 if self.verbose else 0,
+                prompt=dynamic_prompt
             )
             # What it does: This is a critical step. It reaches into the ToolCallingAgent and replaces its default system prompt with the dynamic_prompt we just built. 
             # This "tunes" the worker agent for this specific query.
@@ -170,8 +171,8 @@ class ITHelpdeskAgent:
             # dossier: A multi-line string that is constructed piece by piece, including which examples were selected, the final chain of thought from the AI, and the final decision.
             dossier = "### Dynamic CoT Selection\n\n"
             dossier += "CoT Examples selected for this query:\n"
-            for ex in selected:
-                dossier += f"- `{ex['query'][:60].strip()}...`\n"
+            for examples in selected:
+                dossier += f"- `{examples['query'][:60].strip()}...`\n"
             dossier += "\n"
 
             dossier += "### Final Chain of Thought\n\n"
@@ -181,7 +182,6 @@ class ITHelpdeskAgent:
             if not tool_calls:
                 dossier += "⚠️ Decision: No tool was called."
             else:
-                import json
                 for call in tool_calls:
                     # Robustly handle different smolagents ToolCall formats
                     tool_name = getattr(call, "name", None)

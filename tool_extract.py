@@ -13,9 +13,10 @@ Import in all four agents:
     from _tool_extract import extract_tool_calls
 """
 from __future__ import annotations
-import re
+import re # Purposes: Used to scan model output text for complex 'Action: ...' patterns.
 
-# Every tool name the agents can call (mirrors tools.py)
+# Purposes: A definitive whitelist of all allowed tool names. 
+# This prevents the agent from hallucinating or calling invalid functions.
 KNOWN_TOOLS = {
     "lookup_knowledge_base", "create_ticket", "escalate_ticket",
     "reset_password", "get_user_info", "lookup_user_account",
@@ -27,9 +28,11 @@ KNOWN_TOOLS = {
 
 class ToolCall:
     """Minimal stand-in for smolagents ToolCall objects."""
+    # Purposes: Allows us to treat manually parsed regex matches as if they were 
+    # real objects from the smolagents framework.
     def __init__(self, name: str, arguments: dict):
-        self.name      = name
-        self.arguments = arguments
+        self.name = name # The name of the tool (e.g., 'create_ticket').
+        self.arguments = arguments # The dictionary of parameters (e.g., {'priority': 'high'}).
 
 
 def parse_args_from_text(args_text: str) -> dict:
@@ -37,14 +40,20 @@ def parse_args_from_text(args_text: str) -> dict:
     Parse    key="value", key="value"   into a plain dict.
     Also handles unquoted values:  key=value
     """
+    # Purposes: Initializes an empty dictionary to hold the final parsed parameters.
     result = {}
     # Quoted values
+    # Purposes: Finds pairs like priority="high" where double quotes are used.
     for k, v in re.findall(r'(\w+)\s*=\s*"([^"]*)"', args_text):
         result[k] = v
-    # Combined extraction for single-quoted ('val') and unquoted (val) values
-    # Uses setdefault so if a double-quoted value already exists, we don't overwrite it.
-    for k, v_quoted, v_unquoted in re.findall(r"(\w+)\s*=\s*(?:'([^']*)'|([^,\s)\n\"'][^\s,)]*))", args_text):
-        result.setdefault(k, v_quoted or v_unquoted)
+    # Unquoted values (only if key not already found)
+    # Purposes: Finds pairs like priority='high' using single quotes as a fallback.
+    for k, v in re.findall(r"(\w+)\s*=\s*'([^']*)'", args_text):
+        result.setdefault(k, v)
+    # Purposes: Final fallback for unquoted values like count=5 or status=open.
+    for k, v in re.findall(r"(\w+)\s*=\s*([^,\s)\n\"'][^\s,)]*)", args_text):
+        result.setdefault(k, v)
+    # Purposes: Returns the complete dictionary of arguments found in the text.
     return result
 
 
@@ -60,14 +69,19 @@ def scan_text_for_tool(text: str) -> "FakeToolCall | None":
         r"(?:Action|action)\s*:\s*(\w+)\(([^)\n]*)\)",# Action: tool_name(args)
         r"^\s*(\w+)\(([^)\n]*)\)\s*$",                # bare on its own line
     ]
+    # Purposes: Loops through several common patterns small models use to indicate a tool call.
     for pat in patterns:
-        flags = re.MULTILINE if "^" in pat else 0
+        flags = re.MULTILINE if "^" in pat else 0 # Purpose: Correctly handle line-anchored (^) patterns.
+        # Purposes: Finds all matches for the current pattern in the given text.
         for m in re.finditer(pat, text, flags):
-            name = m.group(1)
+            name = m.group(1) # Purpose: The tool name located in capture group 1.
+            # Purposes: Verifies that the found command is actually a valid tool in our kit.
             if name in KNOWN_TOOLS:
+                # Purposes: Parses the string inside the parentheses into a dictionary of arguments.
                 args = parse_args_from_text(m.group(2))
+                # Purposes: Returns a compatible ToolCall object for the framework to execute.
                 return ToolCall(name, args)
-    return None
+    return None # Purposes: Returns None if no valid tool pattern was discovered.
 
 
 def extract_tool_calls(steps) -> list:
@@ -85,28 +99,37 @@ def extract_tool_calls(steps) -> list:
     so both types are compatible.
     """
     # Pass 1: structured tool_calls
+    # Purposes: We search backwards to find the most recent decision made by the model.
     for step in reversed(list(steps)):
+        # Purposes: Attempts to retrieve the standard 'tool_calls' attribute from the step.
         tcs = getattr(step, "tool_calls", None)
         if tcs:
-            return list(tcs)
+            return list(tcs) # Purposes: Found structured tool calls (success for larger models).
+        # Purposes: Fallback to an older attribute name used in some versions of the library.
         tn = getattr(step, "tool_name", None)
         if isinstance(tn, str) and tn in KNOWN_TOOLS:
             ta = getattr(step, "tool_arguments", None) or {}
+            # Purposes: Creates a compatible object if only raw name/args strings are found.
             return [ToolCall(tn, ta if isinstance(ta, dict) else {})]
 
     # Pass 2: scan raw model output text
+    # Purposes: If structured passion failed, search the raw text blocks for tool patterns.
     for step in reversed(list(steps)):
+        # Purposes: Checks the model's textual response message.
         msg = getattr(step, "model_output_message", None)
         if msg:
             content = getattr(msg, "content", "") or ""
+            # Purposes: Uses our regex-based 'brain' to find a tool call in the message text.
             fake = scan_text_for_tool(content)
             if fake:
-                return [fake]
-        # Also try string attrs (older smolagents)
+                return [fake] # Purposes: Found a tool through text parsing (success for 8B models).
+        # Purposes: Final attempt to scan every string-like attribute in the step object.
         for attr in vars(step) if hasattr(step, "__dict__") else []:
             val = str(getattr(step, attr, "") or "")
+            # Purposes: Re-runs the scan on any other available hidden text data.
             fake = scan_text_for_tool(val)
             if fake:
-                return [fake]
+                return [fake] 
 
+    # Purposes: Returns an empty list if no tool call (structured or text) was found in the memory.
     return []
