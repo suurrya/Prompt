@@ -66,14 +66,14 @@ def preflight_check() -> None:
     from dotenv import load_dotenv
     load_dotenv(os.path.join(ROOT, ".env"))
 
-    hf_key = os.environ.get("HUGGING_FACE_API_KEY", "")
+    hf_key = os.environ.get("NVIDIA_API_KEY", "")
     
-    if not hf_key or hf_key == "your_hugging_face_token_here":
-        print("\n[ERROR] HUGGING_FACE_API_KEY is missing or invalid.")
+    if not hf_key or hf_key == "your_nvidia_api_key_here":
+        print("\n[ERROR] NVIDIA_API_KEY is missing or invalid.")
         print("        Please add your token to your .env file.\n")
         sys.exit(1)
 
-    selected_key = "HUGGING_FACE_API_KEY"
+    selected_key = "NVIDIA_API_KEY"
 
     try:
         import smolagents

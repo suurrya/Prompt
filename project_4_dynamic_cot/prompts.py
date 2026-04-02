@@ -152,19 +152,34 @@ FALLBACK_EXAMPLE: dict = {
 # ── TF-IDF(Term Frequency–Inverse Document Frequency) selector ───────────────────────────────────────────────────────
 
 def build_cot_index():
-    queries = [ex["query"] for ex in COT_EXAMPLE_DATABASE]
-    vec = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
-    mat = vec.fit_transform(queries)
-    return vec, mat
+    # saves all the queries in the COT_EXAMPLE_DATABASE in a list
+    queries = [example["query"] for example in COT_EXAMPLE_DATABASE]
+    # Creates and configures a tool to convert text into numerical vectors, ignoring common English words and using both single words and two-word phrases.
+    vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
+    # Converts the list of queries into a matrix of TF-IDF scores
+    tfidf_matrix = vectorizer.fit_transform(queries)
+    return vectorizer, tfidf_matrix 
+    # vec is a trained, reusable tool permanently stores all the knowledge learned from queries
+    # mat is a matrix where the matrix the documents and the columes is the the unique terms from the vocabulary
+    # the value of the matrix is the tf-idf score of the term in the document
+
+# IDF(term) = log [ (Total number of documents + 1) / (Number of documents containing the term + 1) ] + 1
 
 COT_VECTORIZER, COT_MATRIX = build_cot_index()
 
 
 def select_cot_examples(user_query: str, top_k: int = 3, min_score: float = 0.05) -> list[dict]:
-    qvec = COT_VECTORIZER.transform([user_query])
-    scores = cosine_similarity(qvec, COT_MATRIX).flatten()
-    top_indices = scores.argsort()[::-1][:top_k]
-    return [COT_EXAMPLE_DATABASE[i] for i in top_indices if scores[i] >= min_score]
+    # takes the query text and converts it into a numerical vector.    
+    query_vector = COT_VECTORIZER.transform([user_query])
+
+    # calculates how similar the new user query vector is to every example vector in our database
+    similarity_scores = cosine_similarity(query_vector, COT_MATRIX).flatten()
+
+    # Get the indices of the top k examples
+    # This sorts the scores but returns the original indices of the items in sorted order from highest score to lowest and takes the highest 2 examples
+    top_indices = similarity_scores.argsort()[::-1][:top_k]
+
+    return [COT_EXAMPLE_DATABASE[i] for i in top_indices if similarity_scores[i] >= min_score]
 
 
 # ── Prompt template ───────────────────────────────────────────────────────

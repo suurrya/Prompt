@@ -41,11 +41,10 @@ def parse_args_from_text(args_text: str) -> dict:
     # Quoted values
     for k, v in re.findall(r'(\w+)\s*=\s*"([^"]*)"', args_text):
         result[k] = v
-    # Unquoted values (only if key not already found)
-    for k, v in re.findall(r"(\w+)\s*=\s*'([^']*)'", args_text):
-        result.setdefault(k, v)
-    for k, v in re.findall(r"(\w+)\s*=\s*([^,\s)\n\"'][^\s,)]*)", args_text):
-        result.setdefault(k, v)
+    # Combined extraction for single-quoted ('val') and unquoted (val) values
+    # Uses setdefault so if a double-quoted value already exists, we don't overwrite it.
+    for k, v_quoted, v_unquoted in re.findall(r"(\w+)\s*=\s*(?:'([^']*)'|([^,\s)\n\"'][^\s,)]*))", args_text):
+        result.setdefault(k, v_quoted or v_unquoted)
     return result
 
 

@@ -172,10 +172,18 @@ EXAMPLE_DATABASE: list[dict] = [
 # ── TF-IDF(Term Frequency–Inverse Document Frequency) selector ───────────────────────────────────────────────────────
 
 def _build_index():
-    queries = [ex["query"] for ex in EXAMPLE_DATABASE]
-    vec = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
-    mat = vec.fit_transform(queries)
-    return vec, mat
+    # saves all the queries in the EXAMPLE_DATABASE in a list
+    queries = [example["query"] for example in EXAMPLE_DATABASE]
+    # Creates and configures a tool to convert text into numerical vectors, ignoring common English words and using both single words and two-word phrases.
+    vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2))
+    # Converts the list of queries into a matrix of TF-IDF scores
+    tfidf_matrix = vectorizer.fit_transform(queries)
+    return vectorizer, tfidf_matrix 
+    # vec is a trained, reusable tool permanently stores all the knowledge learned from queries
+    # mat is a matrix where the matrix the documents and the columes is the the unique terms from the vocabulary
+    # the value of the matrix is the tf-idf score of the term in the document
+
+# IDF(term) = log [ (Total number of documents + 1) / (Number of documents containing the term + 1) ] + 1
 
 _VECTORIZER, _MATRIX = _build_index()
 
@@ -189,17 +197,21 @@ def select_examples(user_query: str, top_k: int = 4, min_score: float = 0.2) -> 
     if not user_query.strip():
         return []
         
-    qvec = _VECTORIZER.transform([user_query])
-    scores = cosine_similarity(qvec, _MATRIX).flatten()
+    # takes the query text and converts it into a numerical vector.    
+    query_vector = _VECTORIZER.transform([user_query])
+
+    # calculates how similar the new user query vector is to every example vector in our database
+    similarity_scores = cosine_similarity(query_vector, _MATRIX).flatten()
     
     # Get the indices of the top k examples
-    top_indices = scores.argsort()[::-1][:top_k]
+    # This sorts the scores but returns the original indices of the items in sorted order from highest score to lowest and takes the highest 2 examples
+    top_indices = similarity_scores.argsort()[::-1][:top_k]
     
     # --- The NEW Logic: Filter by score ---
     final_examples = []
     for i in top_indices:
         # Only include the example if its score is above our threshold
-        if scores[i] >= min_score:
+        if similarity_scores[i] >= min_score:
             final_examples.append(EXAMPLE_DATABASE[i])
             
     return final_examples

@@ -50,7 +50,7 @@ class ITHelpdeskAgent:
 
     EXPERIMENT_NAME = "Static Chain-of-Thought"
 
-    def __init__(self, model_id: str = "meta/llama3-8b-instruct", verbose: bool = False):
+    def __init__(self, model_id: str = "meta/llama3-8b-instruct", verbose: bool = True):
         self.verbose = verbose
         self._model = TextToolParserModel(
             model_id=model_id,
