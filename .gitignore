@@ -22,3 +22,4 @@ __pycache__/
 
 #output
 .debug_model_output.txt
+.evaluation/results.json
