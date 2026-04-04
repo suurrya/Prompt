@@ -872,12 +872,12 @@ if __name__ in ("__main__", "__mp_main__"):
         sys.exit(1)
 
     print("\n  IT Helpdesk Agent Benchmark UI")
-    print("  http://localhost:8000")
+    print("  http://localhost:8080")
     print("  Chat history: .nicegui/storage-user-<UUID>.json per user")
     print("  End Chat button: floating bottom-right of the page\n")
 
     ui.run(
         title="IT Helpdesk Agent Benchmark",
-        favicon="🖥️", port=8000, reload=False, dark=False,
+        favicon="🖥️", port=8080, reload=False, dark=False,
         storage_secret="itbenchmark_storage_secret_change_me_in_production",
     )
