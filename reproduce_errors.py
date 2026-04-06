@@ -2,19 +2,11 @@ import os # Purposes: Used to manage file paths for local .env files.
 import sys # Purposes: Configures the python path so we can import 'tools' and 'model_wrapper' from the root.
 import json # Purposes: Standard library for data formatting.
 import re # Purposes: The 'Detective' that finds the AI's thoughts in its raw output.
-
-# Add the current directory to sys.path so we can import projects
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# Explicitly load .env from the root of the project
-env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 try:
     from dotenv import load_dotenv
-    load_dotenv(dotenv_path=env_path)
+    load_dotenv()
 except ImportError:
-    pass
-
-# Ensure API key is set
+    print("[WARNING] 'python-dotenv' is not installed. Environment variables from .env will not be loaded.")
 if not os.environ.get("NVIDIA_API_KEY"):
     print("[ERROR] NVIDIA_API_KEY not found. Please check your .env file.")
     sys.exit(1)

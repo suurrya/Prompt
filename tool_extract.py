@@ -63,11 +63,17 @@ def scan_text_for_tool(text: str) -> "FakeToolCall | None":
       1. `tool_name(args)` backtick format
       2. Action: tool_name(args)
       3. Bare  tool_name(args)  on its own line
+      4. **Tool:** tool_name(args)         — CoT bold-label format
+      5. "call the `tool_name` tool"       — prose description format
+      6. Bare tool_name with no args       — minimal output (e.g. "schedule_maintenance")
     """
     patterns = [
-        r"`(\w+)\(([^`]*)\)`",                        # `tool_name(args)`
-        r"(?:Action|action)\s*:\s*(\w+)\(([^)\n]*)\)",# Action: tool_name(args)
-        r"^\s*(\w+)\(([^)\n]*)\)\s*$",                # bare on its own line
+        r"`(\w+)\(([^`]*)\)`",                              # `tool_name(args)`
+        r"(?:Action|action)\s*:\s*`?(\w+)\(([^)\n]*)\)`?", # Action: tool_name(args)
+        r"^\s*(\w+)\(([^)\n]*)\)\s*$",                     # bare on its own line
+        r"\*\*Tool:\*\*\s*(\w+)\(([^)]*)\)",               # **Tool:** tool_name(args)
+        r"(?:call(?:ing)?)\s+(?:the\s+)?`(\w+)`\s+tool",   # "call the `tool_name` tool"
+        r"^\s*(\w+)\s*$",                                   # bare tool name, no args
     ]
     # Purposes: Loops through several common patterns small models use to indicate a tool call.
     for pat in patterns:
@@ -78,9 +84,16 @@ def scan_text_for_tool(text: str) -> "FakeToolCall | None":
             # Purposes: Verifies that the found command is actually a valid tool in our kit.
             if name in KNOWN_TOOLS:
                 # Purposes: Parses the string inside the parentheses into a dictionary of arguments.
-                args = parse_args_from_text(m.group(2))
+                args = parse_args_from_text(m.group(2)) if m.lastindex >= 2 else {}
                 # Purposes: Returns a compatible ToolCall object for the framework to execute.
                 return ToolCall(name, args)
+
+    # Last resort: scan for any known tool name mentioned in the text.
+    # Purposes: Catches truncated CoT outputs where the model reasoned about a tool but the Action line never appeared.
+    for tool in KNOWN_TOOLS:
+        if re.search(rf"\b{tool}\b", text):
+            return ToolCall(tool, {})
+
     return None # Purposes: Returns None if no valid tool pattern was discovered.
 
 

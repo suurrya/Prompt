@@ -21,7 +21,6 @@ import asyncio, html as _html, os, re, sys, time # Purposes: Core utilities for 
 from concurrent.futures import ThreadPoolExecutor # Purposes: Allows running multiple AI calls in parallel without blocking the UI.
 from dotenv import load_dotenv # Purposes: Loads project-wide environment variables from .env.
 from nicegui import app, ui # Purposes: The 'Web Engine' that renders the beautiful, reactive dashboard.
-import markdown # Purposes: Converts technical AI thoughts into pretty, readable text.
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -193,18 +192,26 @@ def parse_dossier(text: str) -> dict:
            "error": "", "error_type": ""}
 
     # ── Errors ────────────────────────────────────────────────────────────
-    if "❌" in text or text.strip().startswith("⚠️"):
+    if "❌" in text:
         m = re.search(r"❌\s*Error[:\s]*\n?`?([^`]*)`?", text, re.DOTALL)
         msg = m.group(1).strip() if m else text.strip()
         if not msg or msg in ('""', "''", ""):
             out["error"] = "Agent reached maximum steps without completing the task."
             out["error_type"] = "max_steps"
         elif "max step" in msg.lower():
-            out["error"] = msg; out["error_type"] = "max_steps"
+            out["error"] = msg
+            out["error_type"] = "max_steps"
         elif "not in the tool" in msg.lower() or "schema" in msg.lower():
-            out["error"] = msg; out["error_type"] = "schema"
+            out["error"] = msg
+            out["error_type"] = "schema"
         else:
-            out["error"] = msg or repr(text); out["error_type"] = "general"
+            out["error"] = msg or repr(text)
+            out["error_type"] = "general"
+        return out
+
+    if text.strip().startswith("⚠️"):
+        out["error"] = "No tool was called."
+        out["error_type"] = "no_tool"
         return out
 
     # ── Examples (Exp 3 & 4) ─────────────────────────────────────────────
@@ -273,22 +280,25 @@ def parse_dossier(text: str) -> dict:
 
 # ── HTML builders ──────────────────────────────────────────────────────────
 
+# This function builds the main visible card for each agent's response, showing the tool it called and a human-friendly summary.
 def _response_card_html(tool_name: str, args_str: str, color: str, latency: float,
                         panel_idx: int) -> str:
     """Main visible card — clean human-readable decision."""
-    emoji  = TOOL_EMOJI.get(tool_name, "⚙️")
+    # emoji and latency kept as params for future use; header removed from UI
+    # emoji = TOOL_EMOJI.get(tool_name, "⚙️")
     answer = escape_html_text(get_human_friendly_tool_summary(tool_name, parse_argument_string(args_str)))
-    cid    = f"details-{panel_idx}"
+    cid = f"details-{panel_idx}"
     return (
         f'<div style="background:{color}12;border:1.5px solid {color}50;border-radius:10px;'
         f'padding:11px 13px;margin:0 0 6px;">'
-        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">'
-        f'<span style="font-size:20px;">{emoji}</span>'
-        f'<span style="font-size:13.5px;font-weight:700;color:{color};font-family:monospace;">'
-        f'{escape_html_text(tool_name)}</span>'
-        f'<span style="margin-left:auto;font-size:10.5px;color:#9ca3af;background:#f3f4f6;'
-        f'border-radius:99px;padding:2px 7px;">{latency:.1f}s</span>'
-        f'</div>'
+        # emoji/tool name/latency header removed — kept as comment for future use
+        # f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">'
+        # f'<span style="font-size:20px;">{emoji}</span>'
+        # f'<span style="font-size:13.5px;font-weight:700;color:{color};font-family:monospace;">'
+        # f'{escape_html_text(tool_name)}</span>'
+        # f'<span style="margin-left:auto;font-size:10.5px;color:#9ca3af;background:#f3f4f6;'
+        # f'border-radius:99px;padding:2px 7px;">{latency:.1f}s</span>'
+        # f'</div>'
         f'<div style="font-size:13px;color:#1e293b;line-height:1.55;">{answer}</div>'
         f'<div style="margin-top:8px;">'
         f'<button onclick="var d=document.getElementById(\'{cid}\');'
@@ -299,6 +309,7 @@ def _response_card_html(tool_name: str, args_str: str, color: str, latency: floa
         f'<div id="{cid}" style="display:none;">'
     )
 
+# This function builds the hidden expandable section that shows the detailed reasoning trace and the examples the agent considered.
 def _details_html(parsed: dict, color: str, exp_id: int) -> str:
     """
     Educational reasoning section — explains HOW each prompt technique
@@ -485,7 +496,8 @@ def _details_html(parsed: dict, color: str, exp_id: int) -> str:
 
     return "".join(parts)
 
-def _error_card_html(msg: str, etype: str, exp_id: int, latency: float) -> str:
+# This function builds a special error card if the agent's response indicates an error (like reaching max steps or calling a tool with wrong arguments).
+def _error_card_html(msg: str, etype: str, latency: float) -> str:
     if etype == "max_steps":
         icon, title = "⏱️", "Agent reached max steps"
         body = ("The model exhausted its step budget before calling a tool. "
@@ -508,11 +520,12 @@ def _error_card_html(msg: str, etype: str, exp_id: int, latency: float) -> str:
         f'<div style="font-size:11.5px;color:#7f1d1d;line-height:1.5;">{body}</div></div>'
     )
 
+# This is the main function that takes the raw text output from the agent and constructs the full HTML response card, including error handling, the main tool summary, and the detailed reasoning section.
 def render_response(raw: str, exp_id: int, latency: float, panel_idx: int) -> str:
     parsed = parse_dossier(raw)
     color  = EXPERIMENTS[exp_id]["color"]
     if parsed["error"]:
-        return _error_card_html(parsed["error"], parsed["error_type"], exp_id, latency)
+        return _error_card_html(parsed["error"], parsed["error_type"], latency)
     if not parsed["tool_name"]:
         return (f'<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;'
                 f'padding:10px 12px;font-size:12px;color:#854d0e;margin:0 0 6px;">'
@@ -702,7 +715,9 @@ async def index():
     def _render_agent_response(container, parsed: dict, exp_id: int, latency: float):
         # 1. Determine the conversational AI message based on the tool
         tool = parsed.get("tool_name")
-        if parsed.get("error"):
+        if parsed.get("error_type") == "no_tool":
+            ai_message = "I could not determine a tool to call for this request."
+        elif parsed.get("error"):
             ai_message = "I encountered an error while processing this request."
         elif tool:
             # Fallback to a generic message if the tool isn't in our dictionary
@@ -783,8 +798,8 @@ async def index():
 
     def _shutdown_app():
         ui.notify("Shutting down server...", type="warning")
-        app.shutdown() # This acts like Ctrl+C
-
+        app.shutdown()
+        
     ui.button("End Session", icon="power_settings_new", on_click=_shutdown_app).style(
         "position: fixed; bottom: 24px; right: 24px; z-index: 50; "
         "background: #334155; color: #f8fafc; border-radius: 99px; "
@@ -809,6 +824,17 @@ async def index():
         # Purposes: Guard clause for empty queries.
         if not query:
             ui.notify("Please type a question first.", type="warning"); return
+
+        # Run all test cases sequentially when user types "run test_cases"
+        if query.strip().lower() == "run test_cases":
+            from test_cases import TEST_CASES
+            query_input.set_value("")
+            ui.notify(f"Running {len(TEST_CASES)} test cases…", timeout=3)
+            for tc in TEST_CASES:
+                query_input.set_value(tc["query"])
+                await handle_send()
+            query_input.set_value("")
+            return
 
         # Purposes: Lazy-loading logic. Only loads agents from disk the first time you click Send.
         if _agents is None:
@@ -874,6 +900,7 @@ if __name__ in ("__main__", "__mp_main__"):
     print("\n  IT Helpdesk Agent Benchmark UI")
     print("  http://localhost:8080")
     print("  Chat history: .nicegui/storage-user-<UUID>.json per user")
+    print("  Model Output: debug_model_output.txt")
     print("  End Chat button: floating bottom-right of the page\n")
 
     ui.run(

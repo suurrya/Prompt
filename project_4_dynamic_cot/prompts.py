@@ -27,7 +27,6 @@ Improvements over original Experiment 4:
      tense summary — matching the inferencing style the model must produce.
 """
 
-import numpy as np # Purposes: Used for efficient numerical operations on tool-call probability vectors.
 from sklearn.feature_extraction.text import TfidfVectorizer # Purposes: The 'Indexer' that converts human queries into mathematical scores.
 from sklearn.metrics.pairwise import cosine_similarity # Purposes: The 'Comparison Brain' that finds the most similar examples in 3D-space.
 
