@@ -30,3 +30,7 @@ __pycache__/
 debug_model_output.txt
 evaluation/results.json
 *.log
+
+# Ignore specific files that are frequently edited and not relevant for version control
+CLAUDE.md
+explanations.md
