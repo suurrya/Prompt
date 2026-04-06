@@ -34,3 +34,6 @@ evaluation/results.json
 # Ignore specific files that are frequently edited and not relevant for version control
 CLAUDE.md
 explanations.md
+
+# Ignore the evaluation directory which contains results and logs that are specific to local runs and not relevant for version control
+.evaluation/
