@@ -94,6 +94,7 @@ TOOL_EMOJI = {
     "get_customer_history": "📋",
 }
 
+# Converts a technical tool call (e.g., create_ticket(priority="high")) into a user-friendly English sentence (e.g., "I've created a high priority ticket.").
 def get_human_friendly_tool_summary(tool_name: str, arguments: dict) -> str:
     """
     This function converts a technical tool call into a nice English sentence.
@@ -138,6 +139,7 @@ def get_human_friendly_tool_summary(tool_name: str, arguments: dict) -> str:
     # Return the formatted string
     return template.format(**safe_args)
 
+# Takes a string of arguments (e.g., 'user="test", id=123') and parses it into a Python dictionary.
 def parse_argument_string(args_str: str) -> dict:
     """
     Takes a string like 'user_email="bob@corp.com", method="sms"'
@@ -157,6 +159,8 @@ def parse_argument_string(args_str: str) -> dict:
             args[key.strip()] = value.strip().strip('"\'')
     return args
 
+
+# Dynamically imports and creates an instance of each of the four different AI helpdesk agents from their respective project folders.
 def load_all_experiment_agents() -> dict[int, object]:
     """
     Imports and initializes the 4 different AI agents used in our experiments.
@@ -178,10 +182,14 @@ def load_all_experiment_agents() -> dict[int, object]:
     
     return agents
 
+
+#Safely converts a string into HTML-friendly characters to prevent rendering errors or security issues like cross-site scripting (XSS).
 def escape_html_text(text: str) -> str:
     """A safe way to convert text into HTML-friendly characters (to prevent hacking/errors)."""
     return _html.escape(str(text))
 
+
+# 	Acts as a "Regex Extraction Engine" that takes the raw text output from an agent and systematically extracts structured data: the reasoning (thought), chosen tool, arguments, examples, and any errors.
 def parse_dossier(text: str) -> dict:
     """
     Purposes: This is the 'Regex Extraction Engine'.
@@ -280,7 +288,7 @@ def parse_dossier(text: str) -> dict:
 
 # ── HTML builders ──────────────────────────────────────────────────────────
 
-# This function builds the main visible card for each agent's response, showing the tool it called and a human-friendly summary.
+# Constructs the HTML for the main, visible response card, showing the human-friendly summary of the tool decision.
 def _response_card_html(tool_name: str, args_str: str, color: str, latency: float,
                         panel_idx: int) -> str:
     """Main visible card — clean human-readable decision."""
@@ -291,7 +299,7 @@ def _response_card_html(tool_name: str, args_str: str, color: str, latency: floa
     return (
         f'<div style="background:{color}12;border:1.5px solid {color}50;border-radius:10px;'
         f'padding:11px 13px;margin:0 0 6px;">'
-        # emoji/tool name/latency header removed — kept as comment for future use
+        # emoji/tool name/latency header removed for a cleaner look, but can be re-enabled if desired:
         # f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">'
         # f'<span style="font-size:20px;">{emoji}</span>'
         # f'<span style="font-size:13.5px;font-weight:700;color:{color};font-family:monospace;">'
@@ -309,7 +317,7 @@ def _response_card_html(tool_name: str, args_str: str, color: str, latency: floa
         f'<div id="{cid}" style="display:none;">'
     )
 
-# This function builds the hidden expandable section that shows the detailed reasoning trace and the examples the agent considered.
+# Builds the HTML for the hidden, expandable "Show reasoning & details" section. It formats the agent's thought process, selected examples, and raw arguments.
 def _details_html(parsed: dict, color: str, exp_id: int) -> str:
     """
     Educational reasoning section — explains HOW each prompt technique
@@ -496,7 +504,7 @@ def _details_html(parsed: dict, color: str, exp_id: int) -> str:
 
     return "".join(parts)
 
-# This function builds a special error card if the agent's response indicates an error (like reaching max steps or calling a tool with wrong arguments).
+# Creates a distinct, red-themed HTML card to display an error message if an agent fails. The error type (e.g., max steps reached, schema error) determines the icon and message shown.
 def _error_card_html(msg: str, etype: str, latency: float) -> str:
     if etype == "max_steps":
         icon, title = "⏱️", "Agent reached max steps"
@@ -652,7 +660,7 @@ async def index():
             "display:flex;align-items:center;gap:9px;max-width:840px;margin:0 auto;"
         ):
             query_input = (
-                ui.input(placeholder="Ask an IT question — e.g. 'I forgot my password and I'm locked out'")
+                ui.input(placeholder="Ask an IT question")
                 .style("flex:1;font-size:13px;")
                 .props("outlined dense clearable")
             )
@@ -670,6 +678,7 @@ async def index():
     # ── Helper functions ──────────────────────────────────────────────────
     msg_counter = [0]  # mutable counter for unique collapsible IDs
 
+    # This function adds a user's query as a chat bubble to the appropriate experiment panel and updates the stored chat history.
     def _add_user_bubble(exp_id: int, query: str):
         refs   = experiment_ui_elements[exp_id]
         stored = experiment_chat_histories[str(exp_id)]
@@ -712,6 +721,7 @@ async def index():
         "get_customer_history": "I checked the user's previous IT contact history."
     }
 
+    # This function takes the parsed output from the agent and renders the appropriate response card in the UI, including handling errors and showing the reasoning details.
     def _render_agent_response(container, parsed: dict, exp_id: int, latency: float):
         # 1. Determine the conversational AI message based on the tool
         tool = parsed.get("tool_name")
@@ -799,7 +809,7 @@ async def index():
     def _shutdown_app():
         ui.notify("Shutting down server...", type="warning")
         app.shutdown()
-        
+
     ui.button("End Session", icon="power_settings_new", on_click=_shutdown_app).style(
         "position: fixed; bottom: 24px; right: 24px; z-index: 50; "
         "background: #334155; color: #f8fafc; border-radius: 99px; "
@@ -823,7 +833,8 @@ async def index():
         query = (query_input.value or "").strip()
         # Purposes: Guard clause for empty queries.
         if not query:
-            ui.notify("Please type a question first.", type="warning"); return
+            ui.notify("Please type a question first.", type="warning")
+            return
 
         # Run all test cases sequentially when user types "run test_cases"
         if query.strip().lower() == "run test_cases":
@@ -841,9 +852,7 @@ async def index():
             ui.notify("Loading agents…", timeout=2)
             try:
                 # Purposes: Offloads the slow 'import' calls to a background thread to keep the UI smooth.
-                _agents = await asyncio.get_event_loop().run_in_executor(
-                    _executor, load_all_experiment_agents
-                )
+                _agents = await asyncio.get_event_loop().run_in_executor(_executor, load_all_experiment_agents)
             except Exception as exc:
                 ui.notify(f"Failed to load agents: {exc}", type="negative", timeout=0)
                 return

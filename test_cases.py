@@ -1,5 +1,5 @@
 """
-evaluation/test_cases.py
+test_cases.py
 =========================
 Ground-truth test suite for the four IT Helpdesk agents.
 

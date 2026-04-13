@@ -57,7 +57,7 @@ def parse_args_from_text(args_text: str) -> dict:
     return result
 
 
-def scan_text_for_tool(text: str) -> "FakeToolCall | None":
+def scan_text_for_tool(text: str) -> "ToolCall | None":
     """
     Try several patterns to find a tool call in raw model output text:
       1. `tool_name(args)` backtick format
