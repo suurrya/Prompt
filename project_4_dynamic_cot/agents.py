@@ -130,7 +130,6 @@ class ITHelpdeskAgent:
                 model=self._model,
                 max_steps=1,
                 verbosity_level=1 if self.verbose else 0,
-                prompt=dynamic_prompt
             )
             # What it does: This is a critical step. It reaches into the ToolCallingAgent and replaces its default system prompt with the dynamic_prompt we just built. 
             # This "tunes" the worker agent for this specific query.

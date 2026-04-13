@@ -23,7 +23,6 @@ fall outside the static example set, because the closest match is always
 injected rather than the same fixed examples every time.
 """
 from __future__ import annotations
-import numpy as np # Purposes: Used for efficient numerical operations on tool-call probability vectors.
 from sklearn.feature_extraction.text import TfidfVectorizer # Purposes: The 'Indexer' that converts human queries into mathematical scores.
 from sklearn.metrics.pairwise import cosine_similarity # Purposes: The 'Comparison Brain' that finds the most similar examples in 3D-space.
 

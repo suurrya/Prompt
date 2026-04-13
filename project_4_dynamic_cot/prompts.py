@@ -27,7 +27,6 @@ Improvements over original Experiment 4:
      tense summary — matching the inferencing style the model must produce.
 """
 
-import numpy as np # Purposes: Used for efficient numerical operations on tool-call probability vectors.
 from sklearn.feature_extraction.text import TfidfVectorizer # Purposes: The 'Indexer' that converts human queries into mathematical scores.
 from sklearn.metrics.pairwise import cosine_similarity # Purposes: The 'Comparison Brain' that finds the most similar examples in 3D-space.
 
@@ -154,8 +153,7 @@ FALLBACK_EXAMPLE: dict = {
 # ── TF-IDF(Term Frequency–Inverse Document Frequency) selector ───────────────────────────────────────────────────────
 
 def build_cot_index():
-    # saves all the queries in the COT_EXAMPLE_DATABASE in a list
-    # Purposes: Collects every 'query' string from our expert database for indexing.
+    # Purposes: Collects every 'query' string from our expert database and saves them in a list for indexing.
     queries = [example["query"] for example in COT_EXAMPLE_DATABASE]
     # Creates and configures a tool to convert text into numerical vectors, ignoring common English words and using both single words and two-word phrases.
     # Purposes: Initializes the 'Translator' tool. Bigrams (1,2) ensure we catch phrases like "VPN down".

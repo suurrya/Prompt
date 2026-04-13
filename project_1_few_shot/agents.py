@@ -58,7 +58,7 @@ class ITHelpdeskAgent:
             api_base="https://integrate.api.nvidia.com/v1",
             api_key=os.environ["NVIDIA_API_KEY"],
         )
-        # Purposes: Initializes the 'Worker Bee' agent with a list of 7 IT tools.
+        # Purposes: Initializes the agent with the model and tools, and sets a strict step limit to enforce a single decision per query.
         self._agent = ToolCallingAgent(
                 tools=ALL_TOOLS,
                 model=self._model,
