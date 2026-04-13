@@ -1,0 +1,27 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment file — pass secrets at runtime with --env-file, never bake them in
+.env
+
+# Evaluation output (mount as a volume if you want to persist results)
+evaluation/results.json
+
+# IDE and OS noise
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git history
+.git/
+.gitignore

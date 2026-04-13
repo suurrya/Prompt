@@ -1,0 +1,38 @@
+# Run from the docker/ directory:
+#   docker compose up ui          → NiceGUI chat UI at http://localhost:8000
+#   docker compose run --rm eval  → full benchmark (all 4 experiments × 20 test cases)
+#   docker compose run --rm eval python evaluation/run_eval.py --experiments 3 4
+#
+# Or from the project root:
+#   docker compose -f docker/docker-compose.yml up ui
+
+name: it-helpdesk-agents
+
+services:
+  # ── NiceGUI interactive UI ─────────────────────────────────────────────────
+  ui:
+    build:
+      context: ..           # project root is the build context
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env             # loads NVIDIA_API_KEY, OPENAI_API_KEY, etc.
+    volumes:
+      # Persist evaluation results to the host so they survive container restarts
+      - ../evaluation:/app/evaluation
+    restart: unless-stopped
+
+  # ── Benchmark runner (run once, then exits) ────────────────────────────────
+  eval:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    env_file:
+      - ../.env
+    volumes:
+      - ../evaluation:/app/evaluation
+    command: python evaluation/run_eval.py
+    # Only starts when explicitly requested (not with `docker compose up`)
+    profiles:
+      - eval

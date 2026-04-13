@@ -14,10 +14,11 @@
 4. [The Four Experiments](#4-the-four-experiments)
 5. [The 13 Tools](#5-the-13-tools)
 6. [Installation & Setup](#6-installation--setup)
-7. [Running the Benchmark](#7-running-the-benchmark)
-8. [Running the NiceGUI Chat UI](#8-running-the-nicegui-chat-ui)
-9. [Understanding the Results](#9-understanding-the-results)
-10. [Design Decisions](#10-design-decisions)
+7. [Running with Docker](#7-running-with-docker)
+8. [Running the Benchmark](#8-running-the-benchmark)
+9. [Running the NiceGUI Chat UI](#9-running-the-nicegui-chat-ui)
+10. [Understanding the Results](#10-understanding-the-results)
+11. [Design Decisions](#11-design-decisions)
 
 ---
 
@@ -322,7 +323,73 @@ OPENAI_API_KEY=sk-your-key-here
 
 ---
 
-## 7. Running the Benchmark
+## 7. Running with Docker
+
+Docker lets you run both the benchmark and the UI without installing any Python dependencies locally. The build context is always the **project root** (one level above `docker/`).
+
+### Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (includes Docker Compose)
+- A `.env` file at the project root with your API keys (see [Section 6](#6-installation--setup))
+
+> **Note:** NiceGUI must bind to `0.0.0.0` inside the container to be reachable from your host browser. If `ui/app.py` uses `ui.run()` without a `host` argument, add `host="0.0.0.0"` to that call before building the image.
+
+### Option A — `docker build` / `docker run` (no Compose)
+
+```bash
+# From the project root — build the image
+docker build -f docker/Dockerfile -t it-helpdesk-agents .
+
+# Run the NiceGUI UI → open http://localhost:8000
+docker run --env-file .env -p 8000:8000 it-helpdesk-agents
+
+# Run the full benchmark (all 4 experiments × 20 test cases)
+docker run --env-file .env it-helpdesk-agents python evaluation/run_eval.py
+
+# Run only specific experiments
+docker run --env-file .env it-helpdesk-agents \
+  python evaluation/run_eval.py --experiments 3 4
+
+# Persist results.json to your host machine
+docker run --env-file .env \
+  -v "$(pwd)/evaluation:/app/evaluation" \
+  it-helpdesk-agents python evaluation/run_eval.py
+```
+
+### Option B — Docker Compose (recommended)
+
+```bash
+# From the project root
+docker compose -f docker/docker-compose.yml up ui
+# → UI available at http://localhost:8000
+
+# Run the benchmark (exits when done)
+docker compose -f docker/docker-compose.yml run --rm eval
+
+# Pass extra flags to the benchmark runner
+docker compose -f docker/docker-compose.yml run --rm eval \
+  python evaluation/run_eval.py --experiments 1 2 --verbose
+
+# Or cd into docker/ first and drop the -f flag
+cd docker
+docker compose up ui
+docker compose run --rm eval
+```
+
+`evaluation/results.json` is mounted as a volume so benchmark output is saved to your host automatically.
+
+### Rebuild after code changes
+
+```bash
+docker compose -f docker/docker-compose.yml build
+# or
+docker build -f docker/Dockerfile -t it-helpdesk-agents .
+```
+
+---
+
+## 8. Running the Benchmark
+
+> To run via Docker instead, see [Section 7](#7-running-with-docker).
 
 All commands are run from the `it_helpdesk_agents/` directory.
 
@@ -366,7 +433,7 @@ Common causes:
 
 ---
 
-## 8. Running the NiceGUI Chat UI
+## 9. Running the NiceGUI Chat UI
 
 ```bash
 # We recommend using a virtual environment
@@ -396,7 +463,7 @@ Response latency is shown under each bubble so you can compare thinking time dir
 
 ---
 
-## 9. Understanding the Results
+## 10. Understanding the Results
 
 ### What the benchmark measures
 The evaluator checks whether the **first tool called** matches `expected_tool`
@@ -430,7 +497,7 @@ per-difficulty breakdowns show exactly *where* each technique gains or loses.
 
 ---
 
-## 10. Design Decisions
+## 11. Design Decisions
 
 | Decision | Rationale |
 |---|---|
