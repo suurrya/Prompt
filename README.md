@@ -12,7 +12,7 @@
 2. [Architecture](#2-architecture)
 3. [File Reference](#3-file-reference)
 4. [The Four Experiments](#4-the-four-experiments)
-5. [The 13 Tools](#5-the-13-tools)
+5. [The 14 Tools](#5-the-14-tools)
 6. [Installation & Setup](#6-installation--setup)
 7. [Running with Docker](#7-running-with-docker)
 8. [Running the Benchmark](#8-running-the-benchmark)
@@ -48,42 +48,57 @@ user_info) and 3 difficulty tiers (easy, medium, hard).
 ## 2. Architecture
 
 ```
-├── tools.py                        ← 13 shared @tool functions (constant)
-├── model_wrapper.py                ← [NEW] Text-to-Tool "Compatibility Shim" for Llama 3
-├── tool_extract.py                 ← Regex utilities for parsing LLM thoughts
-├── requirements.txt                ← All dependencies (including nicegui & dotenv)
-├── .env                            ← API keys (NVIDIA_API_KEY)
+├── core/                           ← shared utilities (imported by all agents)
+│   ├── tools.py                    ← 14 @tool functions (the constant capability surface)
+│   ├── model_wrapper.py            ← Text-to-Tool compatibility shim for Llama 3
+│   └── tool_extract.py             ← Regex utilities for parsing LLM output
 │
-├── project_1_few_shot/
-│   ├── prompts.py                  ← Terse few-shot prompt
-│   └── agents.py                   ← Agent with pedagogical header (Hypothesis/Method)
-│
-├── project_2_chain_of_thought/
-│   ├── prompts.py                  ← CoT prompt with reasoning traces
-│   └── agents.py                   ← Agent with pedagogical header
-│
-├── project_3_dynamic_few_shot/
-│   ├── prompts.py                  ← TF-IDF selector + template
-│   └── agents.py                   ← Agent with dynamic prompt rebuild
-│
-├── project_4_dynamic_cot/
-│   ├── prompts.py                  ← CoT Database + TF-IDF selector
-│   └── agents.py                   ← The "Expert" Agent with dynamic CoT
+├── agents/                         ← the four prompting experiments
+│   ├── project_1_few_shot/
+│   │   ├── agents.py               ← Agent with pedagogical header (Hypothesis/Method)
+│   │   └── prompts.py              ← Terse few-shot prompt
+│   ├── project_2_chain_of_thought/
+│   │   ├── agents.py               ← Agent with pedagogical header
+│   │   └── prompts.py              ← CoT prompt with reasoning traces
+│   ├── project_3_dynamic_few_shot/
+│   │   ├── agents.py               ← Agent with dynamic prompt rebuild
+│   │   └── prompts.py              ← TF-IDF selector + template
+│   └── project_4_dynamic_cot/
+│       ├── agents.py               ← The "Expert" Agent with dynamic CoT
+│       └── prompts.py              ← CoT database + TF-IDF selector
 │
 ├── evaluation/
 │   ├── test_cases.py               ← 20 labelled test cases
-│   └── run_eval.py                 ← Performance benchmark runner
+│   ├── run_eval.py                 ← Performance benchmark runner
+│   └── results.json                ← Benchmark output (gitignored)
+│
+├── db/
+│   ├── generate_db.py              ← One-time setup: creates assets.db
+│   └── assets.db                   ← Generated SQLite inventory (gitignored)
 │
 ├── ui/
-│   └── app.py                      ← Refactored 4-panel NiceGUI interface
+│   └── app.py                      ← 4-panel NiceGUI interface
 │
-└── reproduce_errors.py             ← [NEW] Multi-project diagnostic tool
+├── scripts/
+│   └── reproduce_errors.py         ← Dev/debug: run all 4 agents on one query
+│
+├── docs/
+│   └── explanation.md              ← Supplementary write-up
+│
+├── docker/
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── .dockerignore
+│
+├── requirements.txt                ← All dependencies
+├── .env                            ← API keys (gitignored)
+├── CLAUDE.md
+└── README.md
 ```
 
 **Controlled variables (same across all agents):**
 - LLM model: `gpt-4o-mini` via `OpenAIServerModel`
-- Tools: all 13 from `tools.py`
-- Knowledge base: `knowledge_base.py`
+- Tools: all 14 from `core/tools.py`
 - API key: `.env`
 
 **Independent variable (changes per experiment):**
@@ -93,9 +108,9 @@ user_info) and 3 difficulty tiers (easy, medium, hard).
 
 ## 3. File Reference
 
-### `tools.py`
+### `core/tools.py`
 The single source of truth for every tool available to all four agents.
-Contains 13 `@tool`-decorated functions grouped by domain:
+Contains 14 `@tool`-decorated functions grouped by domain:
 
 | Domain | Tools |
 |---|---|
@@ -106,6 +121,7 @@ Contains 13 `@tool`-decorated functions grouped by domain:
 | Infrastructure | `check_system_status`, `schedule_maintenance` |
 | Billing | `process_refund` |
 | Memory / History | `store_resolved_ticket`, `save_ticket_to_long_term_memory`, `get_user_long_term_memory`, `get_customer_history` |
+| Asset Database | `query_asset_database` |
 
 Each function's docstring is the tool description the LLM reads — it explains
 *when* to use the tool, not just *what* it does. Well-written docstrings are
@@ -115,23 +131,60 @@ Memory tools use an in-process Python dict (`_LONG_TERM_MEMORY`) as a
 drop-in replacement for Chroma/vector DBs, keeping the benchmark dependency-free
 and reproducible.
 
-### `model_wrapper.py`
-This is the **"Brain Surgeon"** of the project. Since many open-source models (like Llama 3) do not support the OpenAI-standard JSON tool-calling format natively on all endpoints, this class:
-1.  **Disables Native Tools**: Forces the LLM into "Text-Only" mode.
-2.  **Parses via Regex**: Scans model output for `Action: tool_name(arg="val")` or `→ tool_name(...)`.
-3.  **Resilient Retries**: Automatically handles transient 500 or "Degraded" errors common in hosted Inference APIs.
+### `core/model_wrapper.py`
+The **compatibility shim** for open-source models. Since Llama 3 on some endpoints
+doesn't support the OpenAI-standard JSON tool-calling format natively, this class:
+1. **Disables Native Tools** — forces the LLM into text-only mode.
+2. **Parses via Regex** — scans model output for `Action: tool_name(arg="val")` or `→ tool_name(...)`.
+3. **Resilient Retries** — handles transient 500 / "Degraded" errors common in hosted Inference APIs.
 
-### `reproduce_errors.py`
+### `core/tool_extract.py`
+Regex utilities shared by `model_wrapper.py` for extracting tool names and
+arguments from raw LLM text output.
+
+### `db/generate_db.py`
+A one-time setup script that creates `assets.db` — a local SQLite inventory
+database the agents can query via `query_asset_database`.
+
+**Why SQLite?** It is part of Python's standard library (no extra dependency),
+and stores the entire database in a single file, making the project fully
+portable and reproducible across machines.
+
+**What it creates:**
+
+`assets` table — 15 sample IT assets (laptops, servers, phones, printers, monitors):
+
+| Column | Type | Description |
+|---|---|---|
+| `asset_id` | TEXT | Unique tag, e.g. `LAPTOP-7F3A`, `SERVER-AA01` |
+| `asset_type` | TEXT | `laptop` \| `server` \| `phone` \| `printer` \| `monitor` |
+| `manufacturer` | TEXT | e.g. `Dell`, `Apple`, `HP`, `Lenovo` |
+| `model` | TEXT | e.g. `XPS 15 9530`, `MacBook Pro 14` |
+| `assigned_to` | TEXT | User email, or `NULL` if unassigned |
+| `department` | TEXT | e.g. `Engineering`, `Finance`, `HR` |
+| `location` | TEXT | Office or data-centre location |
+| `status` | TEXT | `active` \| `in_repair` \| `retired` \| `available` |
+| `purchase_date` | TEXT | `YYYY-MM-DD` |
+| `warranty_end` | TEXT | `YYYY-MM-DD` — key column for warranty queries |
+
+Run it once before starting any agent or the benchmark:
+```bash
+python db/generate_db.py
+```
+
+Re-running is safe — it deletes and recreates `db/assets.db` from scratch each time.
+
+### `scripts/reproduce_errors.py`
 A developer-first diagnostic script. It allows you to:
 - Run a single query against **all 4 experiments** simultaneously.
 - See the **raw Thought** and **Action** extracted from the agent memory without UI clutter.
 - Debug parsing failures or "Thought" hallucinations in the terminal.
 
-### `project_*/prompts.py`
+### `agents/project_*/prompts.py`
 Each experiment has its own `prompts.py` with a philosophy and design tailored
 to that technique. See [Section 4](#4-the-four-experiments) for details.
 
-### `project_*/agents.py`
+### `agents/project_*/agents.py`
 Wraps `smolagents.ToolCallingAgent`. All four expose the same interface:
 `ITHelpdeskAgent()(user_query) → str`. Experiments 1 & 2 set the system
 prompt once at `__init__`; Experiments 3 & 4 override `__call__` to
@@ -167,7 +220,7 @@ parallel and directly compare latency and answer quality.
 
 ## 4. The Four Experiments
 
-### Experiment 1 — Static Few-Shot (`project_1_few_shot`)
+### Experiment 1 — Static Few-Shot (`agents/project_1_few_shot`)
 
 **Philosophy:** keep the prompt as short and direct as possible. Show the
 model concrete input→output pairs and trust it to generalise by pattern-matching.
@@ -188,7 +241,7 @@ surface-level similarity.
 
 ---
 
-### Experiment 2 — Static Chain-of-Thought (`project_2_chain_of_thought`)
+### Experiment 2 — Static Chain-of-Thought (`agents/project_2_chain_of_thought`)
 
 **Philosophy:** teach the model *how to think*, not just what to do.
 Every example includes a multi-line `Thought:` block that works through
@@ -215,7 +268,7 @@ reasoning trace catches errors before they propagate to the final action.
 
 ---
 
-### Experiment 3 — Dynamic Few-Shot (`project_3_dynamic_few_shot`)
+### Experiment 3 — Dynamic Few-Shot (`agents/project_3_dynamic_few_shot`)
 
 **Philosophy:** make the examples *contextually relevant* rather than fixed.
 
@@ -243,7 +296,7 @@ re-init); no reasoning traces means the model still relies on pattern-matching.
 
 ---
 
-### Experiment 4 — Dynamic Chain-of-Thought (`project_4_dynamic_cot`)
+### Experiment 4 — Dynamic Chain-of-Thought (`agents/project_4_dynamic_cot`)
 
 **Philosophy:** combine dynamic relevance (Exp 3) with reasoning depth (Exp 2).
 This is the most advanced and highest-hypothesised-accuracy strategy.
@@ -272,7 +325,7 @@ needs CoT traces per entry).
 
 ---
 
-## 5. The 13 Tools
+## 5. The 14 Tools
 
 | Tool | When to use | Category |
 |---|---|---|
@@ -289,6 +342,7 @@ needs CoT traces per entry).
 | `save_ticket_to_long_term_memory(user_id, summary, resolution)` | Full outcome archive (issue + fix) | Memory |
 | `get_user_long_term_memory(user_id)` | Full history for a returning user | Memory |
 | `get_customer_history(user_id)` | Quick past-issues summary before triaging | Memory |
+| `query_asset_database(sql)` | Structured SQL lookup of the hardware asset inventory | Asset DB |
 
 ---
 
@@ -306,6 +360,15 @@ pip install -r requirements.txt
 
 This installs: `smolagents`, `openai`, `scikit-learn`, `numpy`,
 `python-dotenv`, and `nicegui`.
+
+### Generate the asset database
+
+```bash
+python db/generate_db.py
+```
+
+This creates `db/assets.db` with 15 sample IT assets.
+Only needs to be run once (or again if you want a clean reset).
 
 ### Configure your API key
 

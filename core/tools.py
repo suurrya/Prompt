@@ -11,9 +11,16 @@ the capability surface constant while only the prompting strategy varies.
 
 import uuid # Purposes: To generate unique, non-repeating identifiers for tickets and resets.
 import datetime # Purposes: To capture the exact moment an action occurs for audit logs.
-# Imports the @tool decorator from the smolagents library. 
+import sqlite3 # Purposes: To query the local assets.db inventory database.
+import json # Purposes: To serialise SQL result rows into a JSON string for the LLM.
+import os # Purposes: To resolve the absolute path to assets.db regardless of the working directory.
+# Imports the @tool decorator from the smolagents library.
 # This is what turns a regular Python function into a "Tool" that an AI can understand and use.
 from smolagents import tool # Purposes: Required to register these functions with the AI framework.
+
+# Absolute path to the SQLite database created by generate_db.py.
+# Using __file__ makes this path correct no matter where Python is launched from.
+_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets.db")
 
 
 # Section 2: Ticket Management Tools
@@ -274,6 +281,77 @@ def schedule_maintenance(
     }
 
 
+# ── Asset Database Query ───────────────────────────────────────────────────
+
+@tool
+def query_asset_database(sql: str) -> str:
+    """
+    Executes a read-only SQL SELECT query against the IT asset inventory database
+    and returns the matching rows as a JSON string.
+
+    Use this tool when a user or technician needs structured information about
+    hardware assets — for example: finding assets by owner, checking warranty
+    expiry dates, listing devices by type or location, or auditing retired equipment.
+
+    DATABASE: assets.db
+    TABLE: assets
+    COLUMNS:
+        id            INTEGER  -- auto-generated row ID
+        asset_id      TEXT     -- unique asset tag, e.g. 'LAPTOP-7F3A', 'SERVER-AA01'
+        asset_type    TEXT     -- 'laptop' | 'server' | 'phone' | 'printer' | 'monitor'
+        manufacturer  TEXT     -- e.g. 'Dell', 'Apple', 'HP', 'Lenovo', 'HPE'
+        model         TEXT     -- e.g. 'XPS 15 9530', 'MacBook Pro 14'
+        assigned_to   TEXT     -- user email address, or NULL if unassigned
+        department    TEXT     -- e.g. 'Engineering', 'Finance', 'HR', 'IT'
+        location      TEXT     -- office or data-centre location string
+        status        TEXT     -- 'active' | 'in_repair' | 'retired' | 'available'
+        purchase_date TEXT     -- date string in YYYY-MM-DD format
+        warranty_end  TEXT     -- date string in YYYY-MM-DD format
+
+    Example queries:
+        "SELECT * FROM assets WHERE assigned_to = 'alice.johnson@company.com'"
+        "SELECT asset_id, model, warranty_end FROM assets WHERE warranty_end < '2027-01-01' AND asset_type = 'server'"
+        "SELECT * FROM assets WHERE status = 'in_repair'"
+        "SELECT asset_type, COUNT(*) as total FROM assets GROUP BY asset_type"
+
+    Args:
+        sql: A valid SQL SELECT statement targeting the 'assets' table.
+             Only SELECT statements are permitted — INSERT/UPDATE/DELETE will be rejected.
+
+    Returns:
+        A JSON string representing a list of row objects (dicts). Each key is a
+        column name. Returns an empty list "[]" if no rows match, or an error
+        message string if the SQL is invalid.
+    """
+    # Guard against write operations — this tool is intentionally read-only.
+    # Purposes: Prevents the agent from accidentally mutating inventory data.
+    if not sql.strip().upper().startswith("SELECT"):
+        return json.dumps({"error": "Only SELECT statements are allowed."})
+
+    # The try...except block is essential: if the agent constructs a malformed
+    # SQL query (e.g. wrong column name, syntax error), sqlite3 raises an
+    # OperationalError. Without this guard, the exception would crash the agent
+    # mid-run. Instead, we catch it and return a descriptive error string so the
+    # agent can self-correct and retry with a fixed query.
+    try:
+        conn = sqlite3.connect(_DB_PATH)
+        # row_factory makes each row a dict (column_name → value) rather than
+        # a plain tuple — this is what we want to serialise as JSON for the LLM.
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(sql)
+        rows = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        # Returning a JSON string (not a Python object) is the correct choice
+        # here: the LLM receives tool results as text, and structured JSON is
+        # far easier for it to parse and reason about than repr(list_of_dicts).
+        return json.dumps(rows, indent=2)
+    except sqlite3.Error as e:
+        # Surface the database error as a readable string so the agent knows
+        # exactly what went wrong and can adjust its query on the next step.
+        return json.dumps({"error": str(e)})
+
+
 # ── Convenience export ─────────────────────────────────────────────────────
 
 # Purposes: This export list is what the agents actually "see". 
@@ -286,4 +364,5 @@ ALL_TOOLS = [
     get_user_info, # Capability 5: Identity context.
     check_system_status, # Capability 6: Outage detection.
     schedule_maintenance, # Capability 7: Hardware repair.
+    query_asset_database, # Capability 8: Structured asset inventory lookup.
 ]

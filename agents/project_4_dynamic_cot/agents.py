@@ -34,9 +34,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Custom wrapper for the Hugging Face Inference Router
 import re
-from model_wrapper import TextToolParserModel
-from tool_extract import extract_tool_calls
-from tools import ALL_TOOLS
+from core.model_wrapper import TextToolParserModel
+from core.tool_extract import extract_tool_calls
+from core.tools import ALL_TOOLS
 from .prompts import build_system_prompt, select_cot_examples
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))

@@ -32,10 +32,10 @@ from smolagents import ToolCallingAgent, AgentMaxStepsError # Purposes: The orch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Custom wrapper for the Hugging Face Inference Router
-from model_wrapper import TextToolParserModel
-from tool_extract import extract_tool_calls
-from tools import ALL_TOOLS
-from project_2_chain_of_thought.prompts import SYSTEM_PROMPT
+from core.model_wrapper import TextToolParserModel
+from core.tool_extract import extract_tool_calls
+from core.tools import ALL_TOOLS
+from agents.project_2_chain_of_thought.prompts import SYSTEM_PROMPT
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 

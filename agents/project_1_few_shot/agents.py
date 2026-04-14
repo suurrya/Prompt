@@ -31,10 +31,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Custom wrapper for the Hugging Face Inference Router
 # Purposes: Imports our specialized model client and extraction utilities.
-from model_wrapper import TextToolParserModel
-from tool_extract import extract_tool_calls
-from tools import ALL_TOOLS
-from project_1_few_shot.prompts import SYSTEM_PROMPT
+from core.model_wrapper import TextToolParserModel
+from core.tool_extract import extract_tool_calls
+from core.tools import ALL_TOOLS
+from agents.project_1_few_shot.prompts import SYSTEM_PROMPT
 
 # Purposes: Boots the environment settings for the entire script.
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))

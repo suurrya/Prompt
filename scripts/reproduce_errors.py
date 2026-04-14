@@ -11,11 +11,11 @@ if not os.environ.get("NVIDIA_API_KEY"):
     print("[ERROR] NVIDIA_API_KEY not found. Please check your .env file.")
     sys.exit(1)
 
-from project_1_few_shot.agents import ITHelpdeskAgent as Agent1
-from project_2_chain_of_thought.agents import ITHelpdeskAgent as Agent2
-from project_3_dynamic_few_shot.agents import ITHelpdeskAgent as Agent3
-from project_4_dynamic_cot.agents import ITHelpdeskAgent as Agent4
-from tool_extract import extract_tool_calls
+from agents.project_1_few_shot.agents import ITHelpdeskAgent as Agent1
+from agents.project_2_chain_of_thought.agents import ITHelpdeskAgent as Agent2
+from agents.project_3_dynamic_few_shot.agents import ITHelpdeskAgent as Agent3
+from agents.project_4_dynamic_cot.agents import ITHelpdeskAgent as Agent4
+from core.tool_extract import extract_tool_calls
 
 EXPERIMENTS = [
     {"id": 1, "class": Agent1, "name": "Static Few-Shot"},

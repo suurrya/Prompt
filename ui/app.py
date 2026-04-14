@@ -838,7 +838,7 @@ async def index():
 
         # Run all test cases sequentially when user types "run test_cases"
         if query.strip().lower() == "run test_cases":
-            from test_cases import TEST_CASES
+            from evaluation.test_cases import TEST_CASES
             query_input.set_value("")
             ui.notify(f"Running {len(TEST_CASES)} test cases…", timeout=3)
             for tc in TEST_CASES:
@@ -914,6 +914,6 @@ if __name__ in ("__main__", "__mp_main__"):
 
     ui.run(
         title="IT Helpdesk Agent Benchmark",
-        favicon="🖥️", port=8080, reload=False, dark=False,
+        favicon="🖥️", port=8000, reload=False, dark=False,
         storage_secret="itbenchmark_storage_secret_change_me_in_production",
     )

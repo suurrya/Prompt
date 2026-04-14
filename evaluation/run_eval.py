@@ -40,7 +40,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 load_dotenv(os.path.join(ROOT, ".env"))
 
-from test_cases import TEST_CASES
+from evaluation.test_cases import TEST_CASES
 
 EXPERIMENTS = {
     1: ("project_1_few_shot",          "Static Few-Shot"),
