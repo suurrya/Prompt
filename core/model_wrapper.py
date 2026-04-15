@@ -2,8 +2,47 @@ import re # Purposes: Used to search and extract tool patterns (Action: ...) fro
 import json # Purposes: Fallback parser for cases where the model outputs structured JSON.
 import uuid # Purposes: Generates unique session IDs for each tool call in the framework.
 import time # Purposes: Provides the 'sleep' function for the API retry logic.
+import datetime # Purposes: Timestamps each model call in the debug log.
+import threading # Purposes: Provides the Semaphore used to serialise concurrent API calls.
+import concurrent.futures # Purposes: Provides ThreadPoolExecutor and Future for enforcing a hard per-call timeout.
 from smolagents import OpenAIServerModel # Purposes: The base class that allows us to connect to the NVIDIA/OpenAI API.
 from smolagents.models import ChatMessageToolCall, ChatMessageToolCallFunction # Purposes: Data structures used to represent tools in the agent's memory.
+
+# Purposes: Hard ceiling on how long a single LLM API call may run.
+# Any call that exceeds this will raise TimeoutError instead of blocking forever.
+# Set conservatively at 45 s — well above normal latency (~2–10 s) but below the
+# pathological 150-200 s values seen when NIMs is under heavy load.
+API_TIMEOUT_SECONDS = 45
+
+# Purposes: NVIDIA NIMs free tier processes requests serially — sending all 4 experiments
+# at the same time causes every request after the first to queue for minutes.
+# This semaphore allows only 1 API call to be in-flight at a time, eliminating queue wait.
+# The UI still shows all 4 "thinking" indicators simultaneously; only the API calls are serialised.
+_NVIDIA_API_SEMAPHORE = threading.Semaphore(1)
+
+
+def _estimate_tokens(text: str) -> int:
+    # Purposes: Provides a fast, dependency-free token count approximation.
+    # The OpenAI rule-of-thumb is ~4 characters per token for English text.
+    # We use max(1, ...) so we never return zero for non-empty strings.
+    return max(1, len(text) // 4)
+
+
+def _messages_to_text(messages) -> str:
+    # Purposes: Collapses the full messages list into one string so _estimate_tokens
+    # can operate on the entire conversation context in a single pass.
+    parts = []
+    # Purposes: Iterates over every message object in the list.
+    for m in messages:
+        # Purposes: Supports both smolagents ChatMessage objects (attribute access)
+        # and plain dicts (key access) so the function works regardless of format.
+        content = getattr(m, "content", None) or (m.get("content") if isinstance(m, dict) else None)
+        # Purposes: Only appends non-empty content to avoid inflating the estimate.
+        if content:
+            parts.append(str(content))
+    # Purposes: Joins all content pieces with a space — token count is length-based
+    # so the separator choice doesn't affect accuracy meaningfully.
+    return " ".join(parts)
 
 # TextToolParserModel
 
@@ -49,17 +88,74 @@ class TextToolParserModel(OpenAIServerModel):
         This ensures that 'tools' and 'tool_choice' are NOT sent to the HF Router API.
         """
         kwargs.pop('tools_to_call_from', None)
-        
+
         # Purposes: Standard LLM APIs might error out; we set a 3-attempt limit for robustness.
         max_retries = 3
         # Purposes: The starting wait time (2 seconds) before retrying an API call.
-        base_delay_seconds = 2 
+        base_delay_seconds = 2
+
+        # Purposes: Estimate input token cost once before retrying — messages never change between attempts.
+        input_tokens = _estimate_tokens(_messages_to_text(messages))
 
         # Purposes: Loop through the retry logic until success or max_retries reached.
         for attempt in range(max_retries):
             try:
-                # Attempt to make the API call
-                return super().generate(messages, **kwargs)
+                # Purposes: Record the moment we start waiting for the semaphore so we can
+                # separate "queue wait" time from actual API generation time in the debug log.
+                t_wait_start = time.perf_counter()
+
+                # Purposes: Acquire the semaphore before touching the network.
+                # Only one thread may hold it at a time, so concurrent experiments
+                # take turns rather than all flooding the NVIDIA NIMs queue at once.
+                with _NVIDIA_API_SEMAPHORE:
+                    # Purposes: Semaphore acquired — queue wait is now over. Record how long we waited.
+                    wait_elapsed = time.perf_counter() - t_wait_start
+
+                    # Pass stop_sequences and response_format through to the parent so
+                    # smolagents' built-in stop tokens are not silently dropped.
+                    # Purposes: Start the wall-clock timer immediately before the API call.
+                    t_api_start = time.perf_counter()
+
+                    # Purposes: Submit the blocking API call to a single-worker thread pool.
+                    # This lets us enforce API_TIMEOUT_SECONDS without killing the main thread.
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _executor:
+                        # Purposes: Dispatch the parent generate() onto the background thread.
+                        _future = _executor.submit(
+                            super().generate, messages,
+                            stop_sequences=stop_sequences,
+                            response_format=response_format,
+                            **kwargs
+                        )
+                        # Purposes: Block until the result arrives OR the timeout fires.
+                        # concurrent.futures.TimeoutError is raised if the API exceeds the limit.
+                        try:
+                            result = _future.result(timeout=API_TIMEOUT_SECONDS)
+                        except concurrent.futures.TimeoutError:
+                            # Purposes: Cancel the pending future (best-effort) and surface a clear error.
+                            _future.cancel()
+                            raise TimeoutError(
+                                f"LLM API did not respond within {API_TIMEOUT_SECONDS}s — "
+                                f"skipping this call."
+                            )
+
+                # Purposes: Stop the API timer as soon as the full response is received.
+                api_elapsed = time.perf_counter() - t_api_start
+
+                # Purposes: Extract the model's raw text output for token estimation.
+                output_text = getattr(result, "content", "") or ""
+
+                # Purposes: Bundle all per-call statistics into a dict stored on self
+                # so parse_tool_calls() — called immediately after — can read them
+                # without needing them passed as arguments.
+                self._last_call_stats = {
+                    "timestamp":    datetime.datetime.now().strftime("%H:%M:%S"),  # Wall-clock time of the call
+                    "wait_s":       wait_elapsed,                                   # Time spent waiting for the semaphore (queue delay)
+                    "latency_s":    api_elapsed,                                    # Actual API round-trip time (generation only)
+                    "tokens_in":    input_tokens,                                   # Estimated prompt token count
+                    "tokens_out":   _estimate_tokens(output_text),                  # Estimated completion token count
+                    "tokens_total": input_tokens + _estimate_tokens(output_text),   # Combined total
+                }
+                return result
             
             except Exception as e:
                 error_str = str(e).lower()
@@ -102,17 +198,46 @@ class TextToolParserModel(OpenAIServerModel):
 
         content = (message.content or "").strip()
         
-        # 0. Debug Log
+        # 0. Debug Log — writes a structured entry per LLM call with timing and token stats.
         try:
+            # Purposes: Retrieve the stats dict populated by generate(); fall back to empty dict
+            # if parse_tool_calls is somehow called without a prior generate() (e.g. native tool path).
+            stats = getattr(self, "_last_call_stats", {})
+
+            # Purposes: Pull each metric out of the stats dict with a safe default so the
+            # log never crashes even when stats are partially missing.
+            ts         = stats.get("timestamp",    "??:??:??")  # Wall-clock time
+            wait       = stats.get("wait_s",       0.0)         # Semaphore queue wait (how long we waited for our turn)
+            latency    = stats.get("latency_s",    0.0)         # Actual API generation time (network + model compute)
+            tokens_in  = stats.get("tokens_in",    "?")         # Estimated prompt tokens
+            tokens_out = stats.get("tokens_out",   "?")         # Estimated completion tokens
+            tokens_tot = stats.get("tokens_total", "?")         # Combined total
+
             with open("debug_model_output.txt", "a") as f:
-                f.write(f"\n--- MODEL OUTPUT ---\n{content}\n")
-        except:
+                # Purposes: Visual separator makes it easy to find the start of each call in the log.
+                f.write(f"\n{'─' * 60}\n")
+                # Purposes: Timestamp lets you correlate log entries with UI latency readings.
+                f.write(f"  Time      : {ts}\n")
+                # Purposes: Shows how long this call waited for the serialising semaphore (queue delay).
+                # A high value here means another experiment was already talking to the API.
+                f.write(f"  Wait      : {wait:.2f}s  (semaphore / queue delay)\n")
+                # Purposes: Shows only the real API round-trip time (model compute + network).
+                # A high value here means NVIDIA NIMs itself was slow.
+                f.write(f"  Latency   : {latency:.2f}s  (API generation time)\n")
+                # Purposes: Token counts show prompt cost (IN) and generation cost (OUT) separately.
+                f.write(f"  Tokens IN : ~{tokens_in}  (estimated from prompt length)\n")
+                f.write(f"  Tokens OUT: ~{tokens_out}  (estimated from response length)\n")
+                # Purposes: Total gives a single number for quick billing / rate-limit awareness.
+                f.write(f"  Tokens TOT: ~{tokens_tot}\n")
+                f.write(f"  Output    :\n{content}\n")
+        except Exception:
+            # Purposes: Debug logging must never crash the agent — silently skip on any I/O error.
             pass
             
         # 0. Pre-process: Strip markdown code blocks if the entire content is wrapped in one
         # or if there's a block at the end.
-        content = re.sub(r"```(?:python|json)?\s*(.*?)\s*```", r"\1", content, flags=re.DOTALL).strip()        # 1. Handle Arrow/Action format or raw tool call: (?:→|Action:)?\s*tool_name(arg="val")
-        # Purposes: A whitelist of tool names. If the AI hallucinates a name NOT in this list, 
+        content = re.sub(r"```(?:python|json)?\s*(.*?)\s*```", r"\1", content, flags=re.DOTALL).strip()
+        # Purposes: A whitelist of tool names. If the AI hallucinates a name NOT in this list,
         # the parser will ignore it, preventing "Undefined Tool" errors.
         valid_tools = {
             "lookup_knowledge_base", "create_ticket", "escalate_ticket", "reset_password",
@@ -123,73 +248,98 @@ class TextToolParserModel(OpenAIServerModel):
         
         # Purposes: A temporary list to store any valid tool calls we find in the text.
         tool_calls = []
-        
-        # This regex is the "Brain" of our manual tool parsing.
-        # It looks for patterns like: Action: create_ticket(priority="high")
-        # It handles optional prefixes (→ or Action:) and extracts the tool name and its arguments.
-        tool_pattern = re.compile(r"""
-            (?:→\s*|Action:\s*)?    # Optional prefix like '→ ' or 'Action: '
-            ([a-zA-Z_]\w*)          # Capture Group 1: The tool_name (must start with letter/underscore)
-            \s*\(                   # Opening parenthesis
-            (                       # Capture Group 2: The raw arguments string
-                .*?                 # Non-greedy match for everything inside
+
+        # Purposes: Shared regex for parsing key="value" pairs from a tool's argument string.
+        # Supports double-quoted, single-quoted, and bare unquoted values.
+        arg_pattern = re.compile(r"""
+            (\w+)               # Capture Group 1: The argument key (e.g., 'priority')
+            \s*=\s*             # Equals sign with optional whitespace
+            (?:                 # Non-capturing group for different value formats
+                "([^"]*)"       # Capture Group 2: Double-quoted string
+                |               # OR
+                '([^']*)'       # Capture Group 3: Single-quoted string
+                |               # OR
+                ([^,\s\)]+)     # Capture Group 4: Unquoted value (e.g., numbers, booleans)
             )
-            \)                      # Closing parenthesis
-        """, re.VERBOSE | re.DOTALL)
-        
-        for match in tool_pattern.finditer(content):
-            name = match.group(1).strip()
-            
-            # Skip if it's not a valid tool name
-            if name not in valid_tools:
-                continue
-                
-            # Purposes: Group 2 captures the entire content inside the parentheses for deeper parsing.
-            args_str = match.group(2).strip()
-            
-            # Efficiently extract key="value" pairs from the arguments string
+        """, re.VERBOSE)
+
+        # Purposes: Positional-argument fallback for single-parameter tools.
+        # If the model forgets the 'key=' part, we map the bare value to the known parameter name.
+        parameter_mapping = {
+            "check_system_status": "service_name",
+            "lookup_knowledge_base": "query",
+            "get_user_info": "user_email",
+            "lookup_user_account": "email",
+            "get_user_long_term_memory": "user_id",
+            "get_customer_history": "user_id"
+        }
+
+        def _parse_args(args_str: str, name: str) -> dict:
+            # Purposes: Extracts key/value pairs from the raw argument string.
             args = {}
-            arg_pattern = re.compile(r"""
-                (\w+)               # Capture Group 1: The argument key (e.g., 'priority')
-                \s*=\s*             # Equals sign with optional whitespace
-                (?:                 # Non-capturing group for different value formats
-                    "([^"]*)"       # Capture Group 2: Double-quoted string
-                    |               # OR
-                    '([^']*)'       # Capture Group 3: Single-quoted string
-                    |               # OR
-                    ([^,\s\)]+)     # Capture Group 4: Unquoted value (e.g., numbers, booleans)
-                )
-            """, re.VERBOSE)
-            
             for k, v1, v2, v3 in arg_pattern.findall(args_str):
                 args[k] = v1 or v2 or v3
-
-            # Fallback: if no key=value was found, but there is a string, it might be a positional arg.
-            # Map it to the known single parameter for single-argument tools.
+            # Purposes: Single-arg positional fallback when no key=value pairs were found.
             if not args and args_str.strip():
                 clean_arg = args_str.strip(' \'"')
-                # These mappings help beginners understand that even if the AI forgets
-                # the "key=" part, we can still recover the intent for simple tools.
-                parameter_mapping = {
-                    "check_system_status": "service_name",
-                    "lookup_knowledge_base": "query",
-                    "get_user_info": "user_email",
-                    "lookup_user_account": "email",
-                    "get_user_long_term_memory": "user_id",
-                    "get_customer_history": "user_id"
-                }
                 if name in parameter_mapping:
                     args[parameter_mapping[name]] = clean_arg
+            return args
 
-            tool_calls.append(
-                ChatMessageToolCall(
-                    id=str(uuid.uuid4()), 
-                    type="function", 
-                    function=ChatMessageToolCallFunction(name=name, arguments=args)
-                )
+        def _make_tool_call(name: str, args_str: str) -> ChatMessageToolCall:
+            # Purposes: Constructs the structured ToolCall object the agent framework expects.
+            return ChatMessageToolCall(
+                id=str(uuid.uuid4()),
+                type="function",
+                function=ChatMessageToolCallFunction(name=name, arguments=_parse_args(args_str, name))
             )
-            # Purposes: We 'break' after the first tool call to enforce single-step execution (max_steps=1).
-            break
+
+        # ── Pass 1: Prefer explicit "Action:" prefix ─────────────────────────────
+        # Purposes: CoT agents (Exp 2 & 4) write "Action: toolname(args)" at the end
+        # of their reasoning trace. This is the most reliable signal — it is the model's
+        # deliberate final decision, not text echoed from the system-prompt framework.
+        # Matching this first prevents false positives from lines like
+        # "→ create_ticket(priority=critical) THEN escalate_ticket." that appear
+        # verbatim inside the echoed diagnostic framework earlier in the output.
+        action_pattern = re.compile(r"""
+            Action:\s*          # Requires the literal "Action:" prefix
+            ([a-zA-Z_]\w*)      # Capture Group 1: tool_name
+            \s*\(
+            (.*?)               # Capture Group 2: raw args
+            \)
+        """, re.VERBOSE | re.DOTALL)
+
+        for match in action_pattern.finditer(content):
+            # Purposes: Reject hallucinated tool names not in the whitelist.
+            name = match.group(1).strip()
+            if name not in valid_tools:
+                continue
+            tool_calls.append(_make_tool_call(name, match.group(2).strip()))
+            break  # Purposes: Only take the first "Action:"-prefixed call.
+
+        # ── Pass 2: Fallback — scan all bare patterns, keep the LAST valid one ──
+        # Purposes: Exp 1 / 3 / 4 output bare "toolname(args)" with no "Action:" prefix.
+        # We take the LAST match (not the first) because:
+        #   • The system-prompt framework text is echoed near the TOP of the output and
+        #     contains false-positive patterns like "→ create_ticket(priority=critical)".
+        #   • The model's actual decision is always at the BOTTOM of its response.
+        # Using reversed() ensures framework echoes are skipped in favour of the true action.
+        if not tool_calls:
+            bare_pattern = re.compile(r"""
+                (?:→\s*)?           # Optional arrow prefix (but NOT requiring "Action:")
+                ([a-zA-Z_]\w*)      # Capture Group 1: tool_name
+                \s*\(
+                (.*?)               # Capture Group 2: raw args
+                \)
+            """, re.VERBOSE | re.DOTALL)
+
+            all_matches = list(bare_pattern.finditer(content))
+            for match in reversed(all_matches):  # Purposes: Iterate from last match to first.
+                name = match.group(1).strip()
+                if name not in valid_tools:
+                    continue
+                tool_calls.append(_make_tool_call(name, match.group(2).strip()))
+                break  # Purposes: Keep only the last valid tool call found.
 
         if tool_calls:
             message.tool_calls = tool_calls

@@ -51,12 +51,14 @@ class ITHelpdeskAgent:
     EXPERIMENT_NAME = "Static Few-Shot"
 
     # Section 1: Initialization
-    def __init__(self, model_id: str = "meta/llama3-8b-instruct", verbose: bool = False):
+    def __init__(self, model_id: str = "meta/llama-3.1-8b-instruct", verbose: bool = False):
         # Purposes: Creates the 'Translator' client that handles API calls and text-to-tool parsing.
         self._model = TextToolParserModel(
             model_id=model_id,
             api_base="https://integrate.api.nvidia.com/v1",
             api_key=os.environ["NVIDIA_API_KEY"],
+            max_tokens=256,    # Tight cap — Exp 1 only needs a bare tool call (~10 tokens)
+            temperature=0,     # Greedy decoding: no sampling overhead, fully deterministic
         )
         # Purposes: Initializes the agent with the model and tools, and sets a strict step limit to enforce a single decision per query.
         self._agent = ToolCallingAgent(

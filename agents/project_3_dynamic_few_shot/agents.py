@@ -60,7 +60,7 @@ class ITHelpdeskAgent:
     # Section 1: Setup & Initialization
     def __init__(
         self,
-        model_id: str = "meta/llama3-8b-instruct",
+        model_id: str = "meta/llama-3.1-8b-instruct",
         top_k_examples: int = 4, # Purpose: Controls the number of retrieved examples (default 4).
         verbose: bool = False, # Purpose: Controls detailed terminal logging.
     ):
@@ -79,6 +79,8 @@ class ITHelpdeskAgent:
             model_id=model_id,
             api_base="https://integrate.api.nvidia.com/v1",
             api_key=self._api_key,
+            max_tokens=256,    # Tight cap — Exp 3 only needs a bare tool call (~10 tokens)
+            temperature=0,     # Greedy decoding: no sampling overhead, fully deterministic
         )
 
     # ------------------------------------------------------------------

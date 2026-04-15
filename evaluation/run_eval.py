@@ -43,10 +43,10 @@ load_dotenv(os.path.join(ROOT, ".env"))
 from evaluation.test_cases import TEST_CASES
 
 EXPERIMENTS = {
-    1: ("project_1_few_shot",          "Static Few-Shot"),
-    2: ("project_2_chain_of_thought",  "Static Chain-of-Thought"),
-    3: ("project_3_dynamic_few_shot",  "Dynamic Few-Shot"),
-    4: ("project_4_dynamic_cot",       "Dynamic Chain-of-Thought"),
+    1: ("agents.project_1_few_shot",          "Static Few-Shot"),
+    2: ("agents.project_2_chain_of_thought",  "Static Chain-of-Thought"),
+    3: ("agents.project_3_dynamic_few_shot",  "Dynamic Few-Shot"),
+    4: ("agents.project_4_dynamic_cot",       "Dynamic Chain-of-Thought"),
 }
 
 TOOL_NAMES = [

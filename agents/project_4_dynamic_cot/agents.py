@@ -63,11 +63,11 @@ class ITHelpdeskAgent:
     # (e.g., my_agent = ITHelpdeskAgent()).
     # Parameters: model_id, top_k_examples, verbose are configurations you can set.
     def __init__(self,
-        model_id: str = "meta/llama3-8b-instruct",
+        model_id: str = "meta/llama-3.1-8b-instruct",
         top_k_examples: int = 2,
         verbose: bool = False,
     ):
-        # Stores the name of the AI model to be used (e.g., "llama3-8b-instruct").
+        # Stores the name of the AI model to be used (e.g., "llama3-70b-instruct").
         self._model_id = model_id
         # Stores the number of examples to fetch for the dynamic prompt.
         self._top_k = top_k_examples
@@ -82,6 +82,8 @@ class ITHelpdeskAgent:
             model_id=model_id,
             api_base="https://integrate.api.nvidia.com/v1",
             api_key=self.api_key,
+            max_tokens=256,    # Longest CoT in debug log is ~150 tokens; 256 has safe headroom
+            temperature=0,     # Greedy decoding: no sampling overhead, fully deterministic
         )
 
     # ------------------------------------------------------------------

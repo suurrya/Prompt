@@ -51,7 +51,7 @@ class ITHelpdeskAgent:
     EXPERIMENT_NAME = "Static Chain-of-Thought"
 
     # Section 1: Setup & Initialization
-    def __init__(self, model_id: str = "meta/llama3-8b-instruct", verbose: bool = True):
+    def __init__(self, model_id: str = "meta/llama-3.1-8b-instruct", verbose: bool = True):
         # Purposes: Stores the logging preference.
         self.verbose = verbose
         # Purposes: Creates the translator client that decodes text into tool calls.
@@ -59,6 +59,8 @@ class ITHelpdeskAgent:
             model_id=model_id,
             api_base="https://integrate.api.nvidia.com/v1",
             api_key=os.environ["NVIDIA_API_KEY"],
+            max_tokens=512,    # CoT reasoning takes ~200 tokens before the Action line; 512 gives safe headroom
+            temperature=0,     # Greedy decoding: no sampling overhead, fully deterministic
         )
         # Purposes: Initializes the worker agent configured to stop after 1 decision.
         self._agent = ToolCallingAgent(
