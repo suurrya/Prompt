@@ -1,7 +1,7 @@
 import os # Purposes: Used to manage file paths for local .env files.
 import sys # Purposes: Configures the python path so we can import 'tools' and 'model_wrapper' from the root.
-import json # Purposes: Standard library for data formatting.
 import re # Purposes: The 'Detective' that finds the AI's thoughts in its raw output.
+
 try:
     from dotenv import load_dotenv
     load_dotenv()

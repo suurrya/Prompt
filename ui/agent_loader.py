@@ -46,12 +46,17 @@ def load_email_asset_options() -> list[str]:
         conn = sqlite3.connect(_DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT assigned_to, asset_id FROM assets "
-            "WHERE assigned_to IS NOT NULL AND assigned_to != '' "
-            "ORDER BY assigned_to, asset_id"
+            "SELECT e.email, l.asset_id, l.manufacturer, l.model "
+            "FROM laptops l "
+            "JOIN employees e ON l.assigned_to = e.emp_id "
+            "WHERE l.status = 'active' "
+            "ORDER BY e.email, l.asset_id"
         )
         rows = cursor.fetchall()
         conn.close()
-        return [f"{email}  ->  {asset_id}" for email, asset_id in rows]
+        return [
+            f"{email}  ->  {asset_id}  ->  {manufacturer} {model}"
+            for email, asset_id, manufacturer, model in rows
+        ]
     except sqlite3.Error:
         return []

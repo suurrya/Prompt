@@ -227,10 +227,11 @@ async def index():
         val: str = selection_dropdown.value
         if not val or val == "-- Select user/asset --":
             return
-        parts     = val.split("  ->  ")
-        email     = parts[0].strip()
-        asset_id  = parts[1].strip() if len(parts) > 1 else ""
-        user_name = email.split("@")[0].replace(".", " ").title()
+        parts      = val.split("  ->  ")
+        email      = parts[0].strip()
+        asset_id   = parts[1].strip() if len(parts) > 1 else ""
+        model_info = parts[2].strip() if len(parts) > 2 else asset_id
+        user_name  = email.split("@")[0].replace(".", " ").title()
 
         app.storage.user["selected_email"] = email
         app.storage.user["selected_asset"] = asset_id
@@ -244,7 +245,7 @@ async def index():
         panels_wrapper.set_visibility(True)
         input_wrapper.set_visibility(True)
 
-        welcome = f"Hello {user_name}, what help do you need with your {asset_id}?"
+        welcome = f"Hello {user_name}, what help do you need with your {model_info} (Asset #{asset_id})?"
         for eid in EXPERIMENTS:
             refs = experiment_ui_elements[eid]
             refs["container"].clear()

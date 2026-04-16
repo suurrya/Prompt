@@ -18,9 +18,9 @@ import os # Purposes: To resolve the absolute path to assets.db regardless of th
 # This is what turns a regular Python function into a "Tool" that an AI can understand and use.
 from smolagents import tool # Purposes: Required to register these functions with the AI framework.
 
-# Absolute path to the SQLite database created by generate_db.py.
-# Using __file__ makes this path correct no matter where Python is launched from.
-_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets.db")
+# Absolute path to the SQLite database created by db/generate_db.py.
+# __file__ is core/tools.py → parent is core/ → parent is project root → db/assets.db
+_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "db", "assets.db")
 
 
 # Section 2: Ticket Management Tools
@@ -319,26 +319,46 @@ def query_asset_database(sql: str) -> str:
     hardware assets — for example: finding assets by owner, checking warranty
     expiry dates, listing devices by type or location, or auditing retired equipment.
 
-    DATABASE: assets.db
-    TABLE: assets
-    COLUMNS:
-        id            INTEGER  -- auto-generated row ID
-        asset_id      TEXT     -- unique asset tag, e.g. 'LAPTOP-7F3A', 'SERVER-AA01'
-        asset_type    TEXT     -- 'laptop' | 'server' | 'phone' | 'printer' | 'monitor'
-        manufacturer  TEXT     -- e.g. 'Dell', 'Apple', 'HP', 'Lenovo', 'HPE'
+    DATABASE: assets.db  (tables: departments, employees, laptops, asset_assignments)
+
+    TABLE: laptops  — all company laptops
+        asset_id      INTEGER  -- primary key (auto-assigned integer, e.g. 1, 2, 3)
+        serial_number TEXT     -- unique serial number (alternate key)
+        manufacturer  TEXT     -- e.g. 'Dell', 'Apple', 'HP', 'Lenovo', 'Asus'
         model         TEXT     -- e.g. 'XPS 15 9530', 'MacBook Pro 14'
-        assigned_to   TEXT     -- user email address, or NULL if unassigned
-        department    TEXT     -- e.g. 'Engineering', 'Finance', 'HR', 'IT'
-        location      TEXT     -- office or data-centre location string
+        assigned_to   INTEGER  -- emp_id FK → employees, or NULL if unassigned
+        dept_id       INTEGER  -- FK → departments
+        location      TEXT     -- office location string
         status        TEXT     -- 'active' | 'in_repair' | 'retired' | 'available'
-        purchase_date TEXT     -- date string in YYYY-MM-DD format
-        warranty_end  TEXT     -- date string in YYYY-MM-DD format
+        purchase_date TEXT     -- YYYY-MM-DD
+        warranty_end  TEXT     -- YYYY-MM-DD
+
+    TABLE: employees
+        emp_id        INTEGER  -- primary key
+        badge_number  TEXT     -- unique badge number (alternate key)
+        email         TEXT     -- unique email address (alternate key)
+        full_name     TEXT
+        dept_id       INTEGER  -- FK → departments
+
+    TABLE: departments
+        dept_id       INTEGER  -- primary key
+        dept_code     TEXT     -- unique short code, e.g. 'ENG', 'FIN' (alternate key)
+        dept_name     TEXT     -- unique full name (alternate key)
+        location      TEXT
+
+    TABLE: asset_assignments  — assignment history (composite primary key)
+        asset_id      INTEGER  -- composite PK part 1, FK → laptops
+        emp_id        INTEGER  -- composite PK part 2, FK → employees
+        assigned_date TEXT     -- composite PK part 3 (YYYY-MM-DD)
+        returned_date TEXT     -- NULL if the laptop is still with the employee
+        notes         TEXT
 
     Example queries:
-        "SELECT * FROM assets WHERE assigned_to = 'alice.johnson@company.com'"
-        "SELECT asset_id, model, warranty_end FROM assets WHERE warranty_end < '2027-01-01' AND asset_type = 'server'"
-        "SELECT * FROM assets WHERE status = 'in_repair'"
-        "SELECT asset_type, COUNT(*) as total FROM assets GROUP BY asset_type"
+        "SELECT l.asset_id, l.model, e.email FROM laptops l JOIN employees e ON l.assigned_to = e.emp_id"
+        "SELECT * FROM laptops WHERE status = 'in_repair'"
+        "SELECT l.asset_id, l.model, l.warranty_end FROM laptops l WHERE l.warranty_end < '2026-01-01'"
+        "SELECT l.asset_id, l.model, e.email, d.dept_name FROM laptops l JOIN employees e ON l.assigned_to = e.emp_id JOIN departments d ON l.dept_id = d.dept_id WHERE l.status = 'active'"
+        "SELECT * FROM asset_assignments WHERE emp_id = 1 ORDER BY assigned_date"
 
     Args:
         sql: A valid SQL SELECT statement targeting the 'assets' table.
