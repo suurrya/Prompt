@@ -41,7 +41,7 @@ async def index():
 
     # ── Per-user persistent storage ───────────────────────────────────────────
     app.storage.user.setdefault("experiment_chat_histories", {str(k): [] for k in EXPERIMENTS})
-    app.storage.user.setdefault("is_processing", False)
+    app.storage.user["is_processing"] = False  # Always reset on page load (clears stale state from crashed sessions)
     experiment_chat_histories: dict = app.storage.user["experiment_chat_histories"]
 
     # ── Global CSS ────────────────────────────────────────────────────────────
@@ -236,6 +236,10 @@ async def index():
         app.storage.user["selected_asset"] = asset_id
         app.storage.user["selected_name"]  = user_name
 
+        # Reset chat histories so the welcome message is cleared on the first send,
+        # regardless of any leftover data from a previous browser session.
+        experiment_chat_histories.update({str(k): [] for k in EXPERIMENTS})
+
         selection_card.set_visibility(False)
         panels_wrapper.set_visibility(True)
         input_wrapper.set_visibility(True)
@@ -365,12 +369,19 @@ async def index():
         break
 
     # ── Send handler ──────────────────────────────────────────────────────────
+    def _safe_set_not_processing():
+        """Write is_processing=False, silently ignoring disconnected-session errors."""
+        try:
+            app.storage.user["is_processing"] = False
+        except (AssertionError, KeyError, RuntimeError):
+            pass
+
     async def handle_send():
         global _agents
         try:
             await _handle_send_inner()
-        except (ValueError, RuntimeError):
-            app.storage.user["is_processing"] = False
+        except (ValueError, RuntimeError, AssertionError):
+            _safe_set_not_processing()
 
     async def _handle_send_inner():
         global _agents
@@ -382,10 +393,13 @@ async def index():
             return
 
         if query.strip().lower() == "run test_cases":
-            from evaluation.test_cases import TEST_CASES
+            from evaluation.test_cases import get_test_cases
+            user_email = app.storage.user.get("selected_email", "")
+            asset_id   = app.storage.user.get("selected_asset", "")
+            test_cases = get_test_cases(user_email, asset_id)
             query_input.set_value("")
-            ui.notify(f"Running {len(TEST_CASES)} test cases…", timeout=3)
-            for tc in TEST_CASES:
+            ui.notify(f"Running {len(test_cases)} personalised test cases…", timeout=3)
+            for tc in test_cases:
                 query_input.set_value(tc["query"])
                 await _handle_send_inner()
             query_input.set_value("")
@@ -412,8 +426,8 @@ async def index():
             for exp_id in EXPERIMENTS:
                 _add_user_bubble(exp_id, query)
             thinking = {exp_id: _add_thinking(exp_id) for exp_id in EXPERIMENTS}
-        except (ValueError, RuntimeError):
-            app.storage.user["is_processing"] = False
+        except (ValueError, RuntimeError, AssertionError):
+            _safe_set_not_processing()
             return
 
         async def _run(exp_id: int) -> dict:
@@ -439,12 +453,17 @@ async def index():
         )
         try:
             _show_comparison(results)
-            app.storage.user["is_processing"] = False
-            query_input.enable()
-            send_btn.enable()
             query_input.run_method("focus")
-        except (ValueError, RuntimeError):
-            app.storage.user["is_processing"] = False
+        except (ValueError, RuntimeError, AssertionError):
+            pass
+        finally:
+            # Always re-enable input — even if _show_comparison raised
+            try:
+                query_input.enable()
+                send_btn.enable()
+            except (ValueError, RuntimeError, AssertionError):
+                pass
+            _safe_set_not_processing()
 
     send_btn.on_click(handle_send)
     query_input.on("keydown.enter", handle_send)

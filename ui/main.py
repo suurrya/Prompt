@@ -44,6 +44,7 @@ if __name__ in ("__main__", "__mp_main__"):
             reload=False,
             dark=False,
             storage_secret="itbenchmark_storage_secret_change_me_in_production",
+            reconnect_timeout=600,  # seconds — keeps the session alive while tab is in background
         )
     except KeyboardInterrupt:
         print("\n  Server stopped.")

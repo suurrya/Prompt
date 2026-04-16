@@ -162,8 +162,13 @@ class TextToolParserModel(OpenAIServerModel):
                 
                 # Check for known, temporary server-side errors
                 is_transient_error = (
+                    isinstance(e, TimeoutError) or
                     ("degraded" in error_str and "cannot be invoked" in error_str) or
-                    ("500" in error_str and "internal server error" in error_str)
+                    ("500" in error_str and "internal server error" in error_str) or
+                    ("timeout" in error_str) or
+                    ("timed out" in error_str) or
+                    ("rate limit" in error_str) or
+                    ("429" in error_str)
                 )
 
                 if is_transient_error and attempt < max_retries - 1:

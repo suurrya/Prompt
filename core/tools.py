@@ -192,6 +192,32 @@ def get_user_info(user_email: str) -> dict:
     }
 
 
+@tool
+def lookup_user_account(email: str) -> dict:
+    """
+    Looks up a user's account subscription tier, billing status, and block flags.
+
+    Use this tool when a user asks about their account standing, subscription
+    level, billing issues, or whether their account has been suspended/blocked —
+    distinct from directory lookups (use get_user_info for department/manager info).
+
+    Args:
+        email: The user's company email address.
+
+    Returns:
+        A dict with: email, subscription_tier, billing_status,
+        account_blocked (bool), and block_reason (if applicable).
+    """
+    # Simulated account store — replace with real billing/subscription API call.
+    return {
+        "email": email,
+        "subscription_tier": "enterprise",
+        "billing_status": "current",
+        "account_blocked": False,
+        "block_reason": None,
+    }
+
+
 # ── Infrastructure & Status ────────────────────────────────────────────────
 
 @tool
@@ -361,8 +387,9 @@ ALL_TOOLS = [
     escalate_ticket, # Capability 2: Priority tiering.
     lookup_knowledge_base, # Capability 3: Self-service.
     reset_password, # Capability 4: Account recovery.
-    get_user_info, # Capability 5: Identity context.
-    check_system_status, # Capability 6: Outage detection.
-    schedule_maintenance, # Capability 7: Hardware repair.
-    query_asset_database, # Capability 8: Structured asset inventory lookup.
+    get_user_info, # Capability 5: Identity context (directory/assets).
+    lookup_user_account, # Capability 6: Subscription / billing / block status.
+    check_system_status, # Capability 7: Outage detection.
+    schedule_maintenance, # Capability 8: Hardware repair.
+    query_asset_database, # Capability 9: Structured asset inventory lookup.
 ]
