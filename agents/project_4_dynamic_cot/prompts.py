@@ -413,7 +413,7 @@ def select_cot_examples(user_query: str, top_k: int = 3, min_score: float = 0.05
 
 # Purposes: The 'Expert Skeleton' of the prompt. 
 # Includes the Persona, the Diagnostic Framework, and the 5-Question Rules.
-_COT_PROMPT_TEMPLATE = """\
+COT_PROMPT_TEMPLATE = """\
 You are an expert IT Helpdesk agent. For the user's request, answer these 5 questions,
 then call the correct tool:
   Q1: Problem type? (auth/KB/outage/hardware/software/security/access/billing/history)
@@ -455,5 +455,5 @@ def build_system_prompt(user_query: str, top_k: int = 3) -> str:
         lines.append(f'      Action: {ex["tool_call"]}')
         lines.append("")
     # Purposes: Injects the formatted expert examples into the {examples_block} of our expert template.
-    return _COT_PROMPT_TEMPLATE.format(examples_block="\n".join(lines).strip())
+    return COT_PROMPT_TEMPLATE.format(examples_block="\n".join(lines).strip())
 

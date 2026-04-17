@@ -4,7 +4,7 @@ ui/html_builders.py
 All HTML generation functions for the benchmark UI.
 Returns HTML strings — no NiceGUI elements are created here.
 
-Note: _details_html accepts an optional `agents` dict so it can check the
+Note: details_html accepts an optional `agents` dict so it can check the
 active model ID without importing the global from app.py (avoids circular imports).
 """
 
@@ -15,8 +15,8 @@ from ui.config import EXPERIMENTS
 from ui.parsing import escape_html_text, get_human_friendly_tool_summary, parse_argument_string, parse_dossier
 
 
-def _response_card_html(
-    tool_name: str, args_str: str, color: str, latency: float, panel_idx: int
+def response_card_html(
+    tool_name: str, args_str: str, color: str, panel_idx: int
 ) -> str:
     """Main visible card — clean human-readable tool decision with a collapsible details toggle."""
     answer = escape_html_text(
@@ -37,7 +37,7 @@ def _response_card_html(
     )
 
 
-def _details_html(
+def details_html(
     parsed: dict, color: str, exp_id: int, agents: dict | None = None
 ) -> str:
     """
@@ -46,6 +46,20 @@ def _details_html(
     """
     parts = []
     meta = EXPERIMENTS[exp_id]  # noqa: F841  (used via exp_id below)
+
+    # ── Error detail (show actual exception when agent failed) ────────────────
+    if parsed.get("error"):
+        parts.append(
+            f'<div style="background:#fef2f2;border:1px solid #fecaca;'
+            f'border-radius:6px;padding:8px 10px;margin-bottom:10px;">'
+            f'<div style="font-size:10px;font-weight:700;color:#b91c1c;'
+            f'text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">'
+            f'❌ Error detail</div>'
+            f'<div style="font-size:11px;color:#7f1d1d;font-family:monospace;'
+            f'word-break:break-word;line-height:1.5;">'
+            f'{escape_html_text(parsed["error"])}</div>'
+            f'</div>'
+        )
 
     # ── Per-technique "How I reasoned" banner ─────────────────────────────────
     HOW_I_REASONED = {
@@ -222,7 +236,7 @@ def _details_html(
     return "".join(parts)
 
 
-def _error_card_html(msg: str, etype: str, latency: float) -> str:
+def error_card_html(msg: str, etype: str, latency: float) -> str:
     """Red-themed error card shown when an agent fails."""
     if etype == "max_steps":
         icon, title = "⏱️", "Agent reached max steps"
@@ -255,19 +269,19 @@ def render_response(
 ) -> str:
     """
     Orchestrates the full response HTML from raw agent output.
-    Pass `agents` to enable the active-model warning in _details_html.
+    Pass `agents` to enable the active-model warning in details_html.
     """
     parsed = parse_dossier(raw)
     color  = EXPERIMENTS[exp_id]["color"]
     if parsed["error"]:
-        return _error_card_html(parsed["error"], parsed["error_type"], latency)
+        return error_card_html(parsed["error"], parsed["error_type"], latency)
     if not parsed["tool_name"]:
         return (
             f'<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;'
             f'padding:10px 12px;font-size:12px;color:#854d0e;margin:0 0 6px;">'
             f'⚠️ No tool was called — agent may have reached max steps.</div>'
         )
-    html  = _response_card_html(parsed["tool_name"], parsed["tool_args_str"], color, latency, panel_idx)
-    html += _details_html(parsed, color, exp_id, agents)
+    html  = response_card_html(parsed["tool_name"], parsed["tool_args_str"], color, panel_idx)
+    html += details_html(parsed, color, exp_id, agents)
     html += "</div>"  # close the collapsible div
     return html

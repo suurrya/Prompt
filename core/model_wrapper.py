@@ -18,18 +18,18 @@ API_TIMEOUT_SECONDS = 45
 # at the same time causes every request after the first to queue for minutes.
 # This semaphore allows only 1 API call to be in-flight at a time, eliminating queue wait.
 # The UI still shows all 4 "thinking" indicators simultaneously; only the API calls are serialised.
-_NVIDIA_API_SEMAPHORE = threading.Semaphore(1)
+NVIDIA_API_SEMAPHORE = threading.Semaphore(1)
 
 
-def _estimate_tokens(text: str) -> int:
+def estimate_tokens(text: str) -> int:
     # Purposes: Provides a fast, dependency-free token count approximation.
     # The OpenAI rule-of-thumb is ~4 characters per token for English text.
     # We use max(1, ...) so we never return zero for non-empty strings.
     return max(1, len(text) // 4)
 
 
-def _messages_to_text(messages) -> str:
-    # Purposes: Collapses the full messages list into one string so _estimate_tokens
+def messages_to_text(messages) -> str:
+    # Purposes: Collapses the full messages list into one string so estimate_tokens
     # can operate on the entire conversation context in a single pass.
     parts = []
     # Purposes: Iterates over every message object in the list.
@@ -95,7 +95,7 @@ class TextToolParserModel(OpenAIServerModel):
         base_delay_seconds = 2
 
         # Purposes: Estimate input token cost once before retrying — messages never change between attempts.
-        input_tokens = _estimate_tokens(_messages_to_text(messages))
+        input_tokens = estimate_tokens(messages_to_text(messages))
 
         # Purposes: Loop through the retry logic until success or max_retries reached.
         for attempt in range(max_retries):
@@ -107,7 +107,7 @@ class TextToolParserModel(OpenAIServerModel):
                 # Purposes: Acquire the semaphore before touching the network.
                 # Only one thread may hold it at a time, so concurrent experiments
                 # take turns rather than all flooding the NVIDIA NIMs queue at once.
-                with _NVIDIA_API_SEMAPHORE:
+                with NVIDIA_API_SEMAPHORE:
                     # Purposes: Semaphore acquired — queue wait is now over. Record how long we waited.
                     wait_elapsed = time.perf_counter() - t_wait_start
 
@@ -118,9 +118,9 @@ class TextToolParserModel(OpenAIServerModel):
 
                     # Purposes: Submit the blocking API call to a single-worker thread pool.
                     # This lets us enforce API_TIMEOUT_SECONDS without killing the main thread.
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _executor:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                         # Purposes: Dispatch the parent generate() onto the background thread.
-                        _future = _executor.submit(
+                        future = executor.submit(
                             super().generate, messages,
                             stop_sequences=stop_sequences,
                             response_format=response_format,
@@ -129,10 +129,10 @@ class TextToolParserModel(OpenAIServerModel):
                         # Purposes: Block until the result arrives OR the timeout fires.
                         # concurrent.futures.TimeoutError is raised if the API exceeds the limit.
                         try:
-                            result = _future.result(timeout=API_TIMEOUT_SECONDS)
+                            result = future.result(timeout=API_TIMEOUT_SECONDS)
                         except concurrent.futures.TimeoutError:
                             # Purposes: Cancel the pending future (best-effort) and surface a clear error.
-                            _future.cancel()
+                            future.cancel()
                             raise TimeoutError(
                                 f"LLM API did not respond within {API_TIMEOUT_SECONDS}s — "
                                 f"skipping this call."
@@ -152,8 +152,8 @@ class TextToolParserModel(OpenAIServerModel):
                     "wait_s":       wait_elapsed,                                   # Time spent waiting for the semaphore (queue delay)
                     "latency_s":    api_elapsed,                                    # Actual API round-trip time (generation only)
                     "tokens_in":    input_tokens,                                   # Estimated prompt token count
-                    "tokens_out":   _estimate_tokens(output_text),                  # Estimated completion token count
-                    "tokens_total": input_tokens + _estimate_tokens(output_text),   # Combined total
+                    "tokens_out":   estimate_tokens(output_text),                  # Estimated completion token count
+                    "tokens_total": input_tokens + estimate_tokens(output_text),   # Combined total
                 }
                 return result
             
@@ -279,7 +279,7 @@ class TextToolParserModel(OpenAIServerModel):
             "get_customer_history": "user_id"
         }
 
-        def _parse_args(args_str: str, name: str) -> dict:
+        def parse_args(args_str: str, name: str) -> dict:
             # Purposes: Extracts key/value pairs from the raw argument string.
             args = {}
             for k, v1, v2, v3 in arg_pattern.findall(args_str):
@@ -291,12 +291,12 @@ class TextToolParserModel(OpenAIServerModel):
                     args[parameter_mapping[name]] = clean_arg
             return args
 
-        def _make_tool_call(name: str, args_str: str) -> ChatMessageToolCall:
+        def make_tool_call(name: str, args_str: str) -> ChatMessageToolCall:
             # Purposes: Constructs the structured ToolCall object the agent framework expects.
             return ChatMessageToolCall(
                 id=str(uuid.uuid4()),
                 type="function",
-                function=ChatMessageToolCallFunction(name=name, arguments=_parse_args(args_str, name))
+                function=ChatMessageToolCallFunction(name=name, arguments=parse_args(args_str, name))
             )
 
         # ── Pass 1: Prefer explicit "Action:" prefix ─────────────────────────────
@@ -319,7 +319,7 @@ class TextToolParserModel(OpenAIServerModel):
             name = match.group(1).strip()
             if name not in valid_tools:
                 continue
-            tool_calls.append(_make_tool_call(name, match.group(2).strip()))
+            tool_calls.append(make_tool_call(name, match.group(2).strip()))
             break  # Purposes: Only take the first "Action:"-prefixed call.
 
         # ── Pass 2: Fallback — scan all bare patterns, keep the LAST valid one ──
@@ -343,7 +343,7 @@ class TextToolParserModel(OpenAIServerModel):
                 name = match.group(1).strip()
                 if name not in valid_tools:
                     continue
-                tool_calls.append(_make_tool_call(name, match.group(2).strip()))
+                tool_calls.append(make_tool_call(name, match.group(2).strip()))
                 break  # Purposes: Keep only the last valid tool call found.
 
         if tool_calls:

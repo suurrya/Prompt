@@ -11,9 +11,9 @@ import os
 import sys
 
 # ── Ensure project root is on sys.path before any ui.* imports ────────────────
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 from dotenv import load_dotenv
 

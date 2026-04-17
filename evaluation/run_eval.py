@@ -94,7 +94,7 @@ def preflight_check() -> None:
 
 # ── Tool-call extraction ──────────────────────────────────────────────────────
 
-def _get_agent_steps(agent_instance) -> list:
+def get_agent_steps(agent_instance) -> list:
     """
     Retrieve the step list from a smolagents agent, trying all known
     attribute paths across smolagents versions.
@@ -119,7 +119,7 @@ def _get_agent_steps(agent_instance) -> list:
     return []
 
 
-def _extract_first_tool(agent_instance, response_text: str, debug: bool = False) -> Optional[str]:
+def extract_first_tool(agent_instance, response_text: str, debug: bool = False) -> Optional[str]:
     """
     Return the name of the first tool called, or None if undetectable.
 
@@ -129,7 +129,7 @@ def _extract_first_tool(agent_instance, response_text: str, debug: bool = False)
       3. Regex-scan the response text.
     """
     # Purposes: Grabs the history of what the agent did.
-    steps = _get_agent_steps(agent_instance)
+    steps = get_agent_steps(agent_instance)
     if debug and steps:
         print(f"      [DEBUG] {len(steps)} steps found in agent log")
 
@@ -197,7 +197,7 @@ def evaluate_agent(
         agent = module.ITHelpdeskAgent(verbose=verbose)
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
         # Purposes: A 'Safety Net'. We run the agent on its own thread so we can kill it if it hangs.
-        _pool = ThreadPoolExecutor(max_workers=1)
+        pool = ThreadPoolExecutor(max_workers=1)
         CALL_TIMEOUT = 15
     except Exception:
         print(f"\n[FATAL] Could not instantiate Experiment {experiment_id} agent:")
@@ -219,7 +219,7 @@ def evaluate_agent(
 
         try:
             # Purposes: Sends the query to the agent and waits for a response (with a 15-second cutoff).
-            future = _pool.submit(agent, tc["query"])
+            future = pool.submit(agent, tc["query"])
             response = future.result(timeout=CALL_TIMEOUT)
         except FuturesTimeout:
             error_detail = f"TIMEOUT after {CALL_TIMEOUT}s"
@@ -235,7 +235,7 @@ def evaluate_agent(
 
         latency = time.perf_counter() - t0 # Purposes: Measures how many seconds the agent 'thought' for.
         # Purposes: The moment of truth. Extracts what tool the agent picked and compares it to the answer key.
-        actual_tool = _extract_first_tool(agent, response, debug=debug)
+        actual_tool = extract_first_tool(agent, response, debug=debug)
         correct = actual_tool == tc["expected_tool"]
         if correct:
             correct_count += 1

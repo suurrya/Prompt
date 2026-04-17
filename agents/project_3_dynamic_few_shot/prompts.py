@@ -263,7 +263,7 @@ EXAMPLE_DATABASE: list[dict] = [
 
 # ── TF-IDF(Term Frequency–Inverse Document Frequency) selector ───────────────────────────────────────────────────────
 
-def _build_index():
+def build_index():
     # saves all the queries in the EXAMPLE_DATABASE in a list
     # Purposes: Collects every 'query' string from our database to be indexed.
     queries = [example["query"] for example in EXAMPLE_DATABASE]
@@ -273,14 +273,14 @@ def _build_index():
     # Converts the list of queries into a matrix of TF-IDF scores
     # Purposes: Performs the heavy-lifting of turning every example query into a vector of numbers.
     tfidf_matrix = vectorizer.fit_transform(queries)
-    return vectorizer, tfidf_matrix 
+    return vectorizer, tfidf_matrix
     # vec is a trained, reusable tool permanently stores all the knowledge learned from queries
     # mat is a matrix where the matrix the documents and the columes is the the unique terms from the vocabulary
     # the value of the matrix is the tf-idf score of the term in the document
 
 # IDF(term) = log [ (Total number of documents + 1) / (Number of documents containing the term + 1) ] + 1
 
-FS_VECTORIZER, FS_MATRIX = _build_index()
+FS_VECTORIZER, FS_MATRIX = build_index()
 
 
 def select_examples(user_query: str, top_k: int = 4, min_score: float = 0.2) -> list[dict]:
@@ -322,7 +322,7 @@ def select_examples(user_query: str, top_k: int = 4, min_score: float = 0.2) -> 
 # ── Prompt template ───────────────────────────────────────────────────────
 
 # Purposes: The 'Skeleton' of the prompt. Everything is fixed except the {examples_block}.
-_TEMPLATE = """\
+TEMPLATE = """\
 You are an IT Helpdesk agent. Call the single most appropriate tool.
 
 TOOLS:
@@ -333,7 +333,7 @@ TOOLS:
   get_user_info(user_email)                              — AD directory / device lookup
   lookup_user_account(email)                             — subscription / billing
   check_system_status(service_name)                      — live service status
-  schedule_maintenance(asset_id, type, date, user_email) — physical maintenance
+  schedule_maintenance(asset_id, maintenance_type, preferred_date, user_email) — physical maintenance
   process_refund(reservation_id)                         — billing refund
   get_customer_history / get_user_long_term_memory / store_resolved_ticket / save_ticket_to_long_term_memory
 
@@ -367,5 +367,5 @@ def build_system_prompt(user_query: str, top_k: int = 4) -> str:
         lines.append(f'    → {ex["tool_call"]}')
         lines.append("")
     # Purposes: Injects the formatted examples into the {examples_block} of our template.
-    return _TEMPLATE.format(examples_block="\n".join(lines).strip())
+    return TEMPLATE.format(examples_block="\n".join(lines).strip())
     

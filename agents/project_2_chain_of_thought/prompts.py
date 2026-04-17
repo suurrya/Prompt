@@ -336,7 +336,7 @@ AVAILABLE TOOLS:
   get_user_info(user_email)                              — AD directory / device lookup
   lookup_user_account(email)                             — subscription / billing status
   check_system_status(service_name)                      — live service status
-  schedule_maintenance(asset_id, type, date, user_email) — book physical maintenance
+  schedule_maintenance(asset_id, maintenance_type, preferred_date, user_email) — book physical maintenance
   process_refund(reservation_id)                         — process billing refund
   store_resolved_ticket / save_ticket_to_long_term_memory / get_user_long_term_memory / get_customer_history
 

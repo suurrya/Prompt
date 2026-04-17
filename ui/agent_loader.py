@@ -13,7 +13,7 @@ import sqlite3
 
 from ui.config import ROOT
 
-_DB_PATH = os.path.join(ROOT, "db", "assets.db")
+DB_PATH = os.path.join(ROOT, "db", "assets.db")
 
 
 def load_all_experiment_agents() -> dict[int, object]:
@@ -40,10 +40,10 @@ def load_email_asset_options() -> list[str]:
     Returns a list of strings formatted as 'email  ->  ASSET-ID' for the dropdown.
     Returns an empty list if the database does not exist or a query error occurs.
     """
-    if not os.path.exists(_DB_PATH):
+    if not os.path.exists(DB_PATH):
         return []
     try:
-        conn = sqlite3.connect(_DB_PATH)
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
             "SELECT e.email, l.asset_id, l.manufacturer, l.model "

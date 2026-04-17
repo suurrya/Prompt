@@ -15,9 +15,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 # ── Ensure project root is on sys.path before any ui.* imports ────────────────
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 from dotenv import load_dotenv
 from nicegui import app, ui
@@ -25,19 +25,19 @@ from nicegui import app, ui
 # ── Bootstrap ─────────────────────────────────────────────────────────────────
 from ui.config import ROOT, EXPERIMENTS, TOOL_EMOJI, AGENT_MESSAGES
 from ui.parsing import escape_html_text, parse_dossier
-from ui.html_builders import _details_html
+from ui.html_builders import details_html
 from ui.agent_loader import load_all_experiment_agents, load_email_asset_options
 
 load_dotenv(os.path.join(ROOT, ".env"))
 
-_executor = ThreadPoolExecutor(max_workers=4)
-_agents: dict[int, object] | None = None
+executor = ThreadPoolExecutor(max_workers=4)
+agents: dict[int, object] | None = None
 
 
 # ── Page ──────────────────────────────────────────────────────────────────────
 @ui.page("/")
 async def index():
-    global _agents
+    global agents
 
     # ── Per-user persistent storage ───────────────────────────────────────────
     app.storage.user.setdefault("experiment_chat_histories", {str(k): [] for k in EXPERIMENTS})
@@ -88,7 +88,7 @@ async def index():
     comparison_row.set_visibility(False)
 
     # ── Step 1: Selection card (visible on load) ──────────────────────────────
-    _email_asset_options = load_email_asset_options()
+    email_asset_options = load_email_asset_options()
     with ui.card().style(
         "width:100%;border-radius:0;box-shadow:none;"
         "border-bottom:1px solid #e2e8f0;padding:32px 40px;background:#fff;"
@@ -101,7 +101,7 @@ async def index():
         with ui.row().style("align-items:center;gap:12px;"):
             selection_dropdown = (
                 ui.select(
-                    options=["-- Select user/asset --"] + _email_asset_options,
+                    options=["-- Select user/asset --"] + email_asset_options,
                     value="-- Select user/asset --",
                     label="User / Asset",
                 )
@@ -119,7 +119,7 @@ async def index():
             continue_btn.disable()
 
     # ── Agent response renderer (defined before panels so restore path can use it) ──
-    def _render_agent_response(container, parsed: dict, exp_id: int, latency: float):
+    def render_agent_response(container, parsed: dict, exp_id: int, latency: float):
         tool = parsed.get("tool_name")
         if parsed.get("error_type") == "no_tool":
             ai_message = "I could not determine a tool to call for this request."
@@ -136,7 +136,7 @@ async def index():
                     f"color:{EXPERIMENTS[exp_id]['color']};font-weight:500;font-size:0.9em;"
                 ):
                     color   = EXPERIMENTS[exp_id]["color"]
-                    details = _details_html(parsed, color, exp_id, _agents)
+                    details = details_html(parsed, color, exp_id, agents)
                     ui.html(details).style(
                         "background:#f8fafc;padding:10px;border-radius:6px;"
                         "border:1px solid #e2e8f0;color:#334155;margin-top:4px;font-size:11px;"
@@ -178,7 +178,7 @@ async def index():
                                             f'<div class="bubble-user">{escape_html_text(msg["text"])}</div></div>')
                                 else:
                                     raw_val = msg.get("raw", msg.get("text", ""))
-                                    _render_agent_response(
+                                    render_agent_response(
                                         container,
                                         parse_dossier(raw_val),
                                         exp_id,
@@ -217,13 +217,13 @@ async def index():
     input_wrapper.set_visibility(False)
 
     # ── Step 2: Selection card state management ───────────────────────────────
-    def _on_selection_change(e):
+    def on_selection_change(e):
         if e.value and e.value != "-- Select user/asset --":
             continue_btn.enable()
         else:
             continue_btn.disable()
 
-    def _on_continue():
+    def on_continue():
         val: str = selection_dropdown.value
         if not val or val == "-- Select user/asset --":
             return
@@ -259,11 +259,11 @@ async def index():
                     f'</div>'
                 )
 
-    selection_dropdown.on_value_change(_on_selection_change)
-    continue_btn.on_click(_on_continue)
+    selection_dropdown.on_value_change(on_selection_change)
+    continue_btn.on_click(on_continue)
 
     # ── Chat helper closures ──────────────────────────────────────────────────
-    def _add_user_bubble(exp_id: int, query: str):
+    def add_user_bubble(exp_id: int, query: str):
         refs   = experiment_ui_elements[exp_id]
         stored = experiment_chat_histories[str(exp_id)]
         if not stored:
@@ -274,7 +274,7 @@ async def index():
                     f'<div class="bubble-user">{escape_html_text(query)}</div></div>')
         refs["scroll"].scroll_to(percent=1.0, duration=0.3)
 
-    def _add_thinking(exp_id: int):
+    def add_thinking(exp_id: int):
         c    = EXPERIMENTS[exp_id]["color"]
         refs = experiment_ui_elements[exp_id]
         with refs["container"]:
@@ -289,14 +289,14 @@ async def index():
         refs["scroll"].scroll_to(percent=1.0, duration=0.2)
         return el
 
-    def _add_agent_msg(exp_id: int, raw: str, latency: float):
+    def add_agent_msg(exp_id: int, raw: str, latency: float):
         refs   = experiment_ui_elements[exp_id]
         stored = experiment_chat_histories[str(exp_id)]
         stored.append({"role": "agent", "raw": raw, "latency": latency})
-        _render_agent_response(refs["container"], parse_dossier(raw), exp_id, latency)
+        render_agent_response(refs["container"], parse_dossier(raw), exp_id, latency)
         refs["scroll"].scroll_to(percent=1.0, duration=0.3)
 
-    def _show_comparison(results: list[dict]):
+    def show_comparison(results: list[dict]):
         comparison_row.set_visibility(True)
         comparison_row.clear()
         with comparison_row:
@@ -330,7 +330,7 @@ async def index():
                            '<span style="color:#dc2626;font-weight:600;">⚡ Agents disagree — check reasoning</span>')
                 ui.html(f'<div style="font-size:11px;margin-left:auto;">{verdict}</div>')
 
-    def _do_end_chat():
+    def do_end_chat():
         experiment_chat_histories.update({str(k): [] for k in EXPERIMENTS})
         app.storage.user["is_processing"] = False
         try:
@@ -350,7 +350,7 @@ async def index():
         except (ValueError, RuntimeError):
             pass
 
-    def _shutdown_app():
+    def shutdown_app():
         ui.notify("Shutting down server...", type="warning")
         app.shutdown()
 
@@ -359,7 +359,7 @@ async def index():
         "position:fixed;bottom:24px;right:24px;z-index:50;"
         "display:flex;gap:12px;align-items:center;"
     ):
-        ui.button("End Session", icon="power_settings_new", on_click=_shutdown_app) \
+        ui.button("End Session", icon="power_settings_new", on_click=shutdown_app) \
             .props("no-caps color=negative") \
             .style("border-radius:99px;padding:10px 20px;font-weight:600;"
                    "box-shadow:0 4px 12px rgba(0,0,0,0.15);")
@@ -367,11 +367,11 @@ async def index():
     # Wire the clear (delete_sweep) button in the input bar
     for btn in [b for b in ui.context.client.elements.values()
                 if getattr(b, "_props", {}).get("icon") == "delete_sweep"]:
-        btn.on_click(_do_end_chat)
+        btn.on_click(do_end_chat)
         break
 
     # ── Send handler ──────────────────────────────────────────────────────────
-    def _safe_set_not_processing():
+    def safe_set_not_processing():
         """Write is_processing=False, silently ignoring disconnected-session errors."""
         try:
             app.storage.user["is_processing"] = False
@@ -379,14 +379,14 @@ async def index():
             pass
 
     async def handle_send():
-        global _agents
+        global agents
         try:
-            await _handle_send_inner()
+            await handle_send_inner()
         except (ValueError, RuntimeError, AssertionError):
-            _safe_set_not_processing()
+            safe_set_not_processing()
 
-    async def _handle_send_inner():
-        global _agents
+    async def handle_send_inner():
+        global agents
         if app.storage.user.get("is_processing"):
             return
         query = (query_input.value or "").strip()
@@ -403,15 +403,15 @@ async def index():
             ui.notify(f"Running {len(test_cases)} personalised test cases…", timeout=3)
             for tc in test_cases:
                 query_input.set_value(tc["query"])
-                await _handle_send_inner()
+                await handle_send_inner()
             query_input.set_value("")
             return
 
-        if _agents is None:
+        if agents is None:
             ui.notify("Loading agents…", timeout=2)
             try:
-                _agents = await asyncio.get_event_loop().run_in_executor(
-                    _executor, load_all_experiment_agents
+                agents = await asyncio.get_event_loop().run_in_executor(
+                    executor, load_all_experiment_agents
                 )
             except Exception as exc:
                 ui.notify(f"Failed to load agents: {exc}", type="negative", timeout=0)
@@ -426,37 +426,37 @@ async def index():
 
         try:
             for exp_id in EXPERIMENTS:
-                _add_user_bubble(exp_id, query)
-            thinking = {exp_id: _add_thinking(exp_id) for exp_id in EXPERIMENTS}
+                add_user_bubble(exp_id, query)
+            thinking = {exp_id: add_thinking(exp_id) for exp_id in EXPERIMENTS}
         except (ValueError, RuntimeError, AssertionError):
-            _safe_set_not_processing()
+            safe_set_not_processing()
             return
 
-        async def _run(exp_id: int) -> dict:
+        async def run_experiment(exp_id: int) -> dict:
             loop = asyncio.get_event_loop()
             t0   = time.perf_counter()
 
             # Prepend user context so agents use real values instead of <email>/<id>
-            _email  = app.storage.user.get("selected_email", "")
-            _asset  = app.storage.user.get("selected_asset", "")
-            _model  = app.storage.user.get("selected_model", "")
-            _ctx_parts = []
-            if _email: _ctx_parts.append(f"user_email={_email}")
-            if _asset: _ctx_parts.append(f"asset_id={_asset}")
-            if _model: _ctx_parts.append(f"device={_model}")
+            email_val  = app.storage.user.get("selected_email", "")
+            asset_val  = app.storage.user.get("selected_asset", "")
+            model_val  = app.storage.user.get("selected_model", "")
+            ctx_parts = []
+            if email_val: ctx_parts.append(f"user_email={email_val}")
+            if asset_val: ctx_parts.append(f"asset_id={asset_val}")
+            if model_val: ctx_parts.append(f"device={model_val}")
             enriched_query = (
-                f"[Context: {', '.join(_ctx_parts)}]\n{query}"
-                if _ctx_parts else query
+                f"[Context: {', '.join(ctx_parts)}]\n{query}"
+                if ctx_parts else query
             )
 
             try:
-                raw = await loop.run_in_executor(_executor, _agents[exp_id], enriched_query)
+                raw = await loop.run_in_executor(executor, agents[exp_id], enriched_query)
             except Exception as exc:
                 raw = f"❌ Error:\n`{str(exc) or repr(exc)}`"
             latency = time.perf_counter() - t0
             try:
                 thinking[exp_id].delete()
-                _add_agent_msg(exp_id, str(raw), latency)
+                add_agent_msg(exp_id, str(raw), latency)
             except (ValueError, RuntimeError):
                 pass
             parsed = parse_dossier(str(raw))
@@ -464,22 +464,22 @@ async def index():
                     "latency": latency, "is_error": bool(parsed["error"])}
 
         results = sorted(
-            list(await asyncio.gather(*[_run(eid) for eid in EXPERIMENTS])),
+            list(await asyncio.gather(*[run_experiment(eid) for eid in EXPERIMENTS])),
             key=lambda x: x["exp_id"],
         )
         try:
-            _show_comparison(results)
+            show_comparison(results)
             query_input.run_method("focus")
         except (ValueError, RuntimeError, AssertionError):
             pass
         finally:
-            # Always re-enable input — even if _show_comparison raised
+            # Always re-enable input — even if show_comparison raised
             try:
                 query_input.enable()
                 send_btn.enable()
             except (ValueError, RuntimeError, AssertionError):
                 pass
-            _safe_set_not_processing()
+            safe_set_not_processing()
 
     send_btn.on_click(handle_send)
     query_input.on("keydown.enter", handle_send)

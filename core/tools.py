@@ -20,7 +20,7 @@ from smolagents import tool # Purposes: Required to register these functions wit
 
 # Absolute path to the SQLite database created by db/generate_db.py.
 # __file__ is core/tools.py → parent is core/ → parent is project root → db/assets.db
-_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "db", "assets.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "db", "assets.db")
 
 
 # Section 2: Ticket Management Tools
@@ -380,7 +380,7 @@ def query_asset_database(sql: str) -> str:
     # mid-run. Instead, we catch it and return a descriptive error string so the
     # agent can self-correct and retry with a fixed query.
     try:
-        conn = sqlite3.connect(_DB_PATH)
+        conn = sqlite3.connect(DB_PATH)
         # row_factory makes each row a dict (column_name → value) rather than
         # a plain tuple — this is what we want to serialise as JSON for the LLM.
         conn.row_factory = sqlite3.Row

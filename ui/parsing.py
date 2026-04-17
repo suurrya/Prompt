@@ -6,13 +6,13 @@ and the regex dossier engine that extracts structured data from raw agent output
 """
 
 from __future__ import annotations
-import html as _html
+import html as html_module
 import re
 
 
 def escape_html_text(text: str) -> str:
     """Escape text to HTML-safe characters (prevents XSS and rendering errors)."""
-    return _html.escape(str(text))
+    return html_module.escape(str(text))
 
 
 def get_human_friendly_tool_summary(tool_name: str, arguments: dict) -> str:
