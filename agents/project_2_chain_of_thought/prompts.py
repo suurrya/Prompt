@@ -232,6 +232,93 @@ Thought:
   Q1: HISTORY/USER — directory lookup (who is this person, what devices).
   → get_user_info (not lookup_user_account which is for billing context).
 Action: get_user_info(user_email="alice.jones@company.com")
+
+Example 21 — Printer offline for whole floor
+User: "None of us can print to the main printer on our floor this morning."
+Thought:
+  Q1: OUTAGE — "none of us", floor-wide, shared resource.
+  Q2: No.
+  Q3: YES — team-wide = check_system_status first.
+  → check_system_status(printer).
+Action: check_system_status(service_name="printer")
+
+Example 22 — Teams down for whole department
+User: "Teams has been completely unavailable for our whole department this afternoon."
+Thought:
+  Q1: OUTAGE — "whole department", service-level issue.
+  Q3: YES — department-wide = check_system_status first.
+  → check_system_status(teams).
+Action: check_system_status(service_name="teams")
+
+Example 23 — Cracked laptop screen (physical fault)
+User: "I dropped my laptop and the screen cracked. The display is completely black now."
+Thought:
+  Q1: HARDWARE — physical damage.
+  Q2: No KB fix for a cracked screen.
+  Q5: YES — physical repair required.
+  → create_ticket(hardware, high).
+Action: create_ticket(category="hardware", priority="high", summary="Laptop screen cracked — display completely black after drop", user_email="<email>")
+
+Example 24 — Screen replacement booking
+User: "My laptop screen has dead pixels. Can you book a screen replacement appointment?"
+Thought:
+  Q1: HARDWARE — explicit physical upgrade/repair request.
+  Q5: YES — user explicitly says "book a … replacement".
+  → schedule_maintenance (not create_ticket).
+Action: schedule_maintenance(asset_id="<id>", maintenance_type="screen_replacement", preferred_date="<date>", user_email="<email>")
+
+Example 25 — Suspicious USB device
+User: "I found a USB stick plugged into my workstation that I definitely didn't put there."
+Thought:
+  Q1: SECURITY — possible hardware implant or exfiltration device.
+  Q4: YES — critical security incident. Do NOT touch the device.
+  → create_ticket(critical) THEN escalate_ticket to security-team.
+Action: create_ticket(category="security", priority="critical", summary="Suspicious USB device found in workstation", user_email="<email>")
+  → escalate_ticket(ticket_id="<id>", reason="Possible hardware implant or data exfiltration attempt", escalate_to="security-team")
+
+Example 26 — Accidental data leak
+User: "I accidentally emailed a file with customer data to my personal Gmail account."
+Thought:
+  Q1: SECURITY — data exfiltration (even if accidental).
+  Q4: YES — critical incident; compliance team must be notified.
+  → create_ticket(critical) THEN escalate_ticket.
+Action: create_ticket(category="security", priority="critical", summary="Data leak — customer data emailed to personal Gmail", user_email="<email>")
+  → escalate_ticket(ticket_id="<id>", reason="Potential data breach — personal email exfiltration", escalate_to="security-team")
+
+Example 27 — Lost MFA device (ticket not reset_password)
+User: "I lost my phone and now I can't pass the MFA check. I'm locked out."
+Thought:
+  Q1: ACCESS — MFA recovery (NOT a simple password lockout).
+  Q2: No — user cannot self-serve without the MFA device.
+  Q5: No physical hardware work.
+  → create_ticket(access, high) — IT must manually bypass MFA.
+  RULE: do NOT call reset_password; a password reset won't fix a missing MFA device.
+Action: create_ticket(category="access", priority="high", summary="MFA bypass needed — user lost MFA device and is locked out", user_email="<email>")
+
+Example 28 — OneDrive sync error (KB)
+User: "OneDrive keeps showing a sync error and none of my files are uploading."
+Thought:
+  Q1: SOFTWARE/KB — OneDrive sync issues are well-documented.
+  Q2: YES — sign-out/re-sign-in, selective sync, cache clear all in KB.
+  Q3: Single user, not department-wide.
+  → lookup_knowledge_base.
+Action: lookup_knowledge_base(query="OneDrive sync error files not uploading troubleshoot reset")
+
+Example 29 — ERP down for finance team
+User: "The ERP system isn't loading for any of us in the finance team."
+Thought:
+  Q1: OUTAGE — "any of us", team-wide, core business system.
+  Q3: YES — team-wide = check_system_status first.
+  → check_system_status(erp).
+Action: check_system_status(service_name="erp")
+
+Example 30 — Database access request
+User: "I need read access to the production database for my reporting work."
+Thought:
+  Q1: ACCESS — database permissions change.
+  Q2: No self-service path; requires DBA + manager approval.
+  → create_ticket(access, medium).
+Action: create_ticket(category="access", priority="medium", summary="Database access request — production read access for reporting", user_email="<email>")
 """
 
 # Purposes: The core System Instructions. It tells the model it is a "Senior Agent"

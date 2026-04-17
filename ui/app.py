@@ -236,6 +236,7 @@ async def index():
         app.storage.user["selected_email"] = email
         app.storage.user["selected_asset"] = asset_id
         app.storage.user["selected_name"]  = user_name
+        app.storage.user["selected_model"] = model_info
 
         # Reset chat histories so the welcome message is cleared on the first send,
         # regardless of any leftover data from a previous browser session.
@@ -434,8 +435,22 @@ async def index():
         async def _run(exp_id: int) -> dict:
             loop = asyncio.get_event_loop()
             t0   = time.perf_counter()
+
+            # Prepend user context so agents use real values instead of <email>/<id>
+            _email  = app.storage.user.get("selected_email", "")
+            _asset  = app.storage.user.get("selected_asset", "")
+            _model  = app.storage.user.get("selected_model", "")
+            _ctx_parts = []
+            if _email: _ctx_parts.append(f"user_email={_email}")
+            if _asset: _ctx_parts.append(f"asset_id={_asset}")
+            if _model: _ctx_parts.append(f"device={_model}")
+            enriched_query = (
+                f"[Context: {', '.join(_ctx_parts)}]\n{query}"
+                if _ctx_parts else query
+            )
+
             try:
-                raw = await loop.run_in_executor(_executor, _agents[exp_id], query)
+                raw = await loop.run_in_executor(_executor, _agents[exp_id], enriched_query)
             except Exception as exc:
                 raw = f"❌ Error:\n`{str(exc) or repr(exc)}`"
             latency = time.perf_counter() - t0

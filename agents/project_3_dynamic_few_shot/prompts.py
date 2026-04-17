@@ -169,6 +169,96 @@ EXAMPLE_DATABASE: list[dict] = [
      "tool_call": 'get_customer_history(user_id="jdoe")'},
     {"query": "Save the resolution to this user's long-term history",
      "tool_call": 'store_resolved_ticket(user_id="<user_id>", summary="<summary>")'},
+
+    # ── HARDWARE (extra variety) ──────────────────────────────────────────
+    {"query": "I dropped my laptop and the screen cracked and is black",
+     "tool_call": 'create_ticket(category="hardware", priority="high", summary="Laptop screen cracked — display black after drop", user_email="<email>")'},
+    {"query": "My laptop screen is cracked and the display is completely gone",
+     "tool_call": 'create_ticket(category="hardware", priority="high", summary="Cracked laptop screen — needs replacement", user_email="<email>")'},
+    {"query": "Half the keys on my keyboard have stopped responding",
+     "tool_call": 'create_ticket(category="hardware", priority="medium", summary="Laptop keyboard keys unresponsive — hardware fault", user_email="<email>")'},
+    {"query": "My keyboard is not working properly some keys are broken",
+     "tool_call": 'create_ticket(category="hardware", priority="medium", summary="Keyboard hardware fault — keys unresponsive", user_email="<email>")'},
+    {"query": "My docking station stopped charging my laptop and USB ports don't work",
+     "tool_call": 'create_ticket(category="hardware", priority="medium", summary="Docking station fault — no charging or USB", user_email="<email>")'},
+    {"query": "My external monitor shows no signal even though it is plugged in",
+     "tool_call": 'lookup_knowledge_base(query="external monitor no signal HDMI DisplayPort connection troubleshoot")'},
+    {"query": "External monitor not detecting my laptop via HDMI",
+     "tool_call": 'lookup_knowledge_base(query="external monitor HDMI not detected display settings troubleshoot")'},
+    {"query": "Can you book a screen replacement for my laptop it has dead pixels",
+     "tool_call": 'schedule_maintenance(asset_id="<id>", maintenance_type="screen_replacement", preferred_date="<date>", user_email="<email>")'},
+    {"query": "Please book a battery swap for my laptop",
+     "tool_call": 'schedule_maintenance(asset_id="<id>", maintenance_type="battery_swap", preferred_date="<date>", user_email="<email>")'},
+    {"query": "My USB drive is not being recognised when I plug it in",
+     "tool_call": 'lookup_knowledge_base(query="USB drive not recognised device manager troubleshoot")'},
+
+    # ── SOFTWARE (extra variety) ──────────────────────────────────────────
+    {"query": "My camera and microphone don't work in Microsoft Teams calls",
+     "tool_call": 'lookup_knowledge_base(query="Microsoft Teams camera microphone not working audio video settings")'},
+    {"query": "Teams video call has no audio and my camera is not showing",
+     "tool_call": 'lookup_knowledge_base(query="Teams camera audio not working call settings troubleshoot")'},
+    {"query": "Teams has been completely unavailable for our whole department",
+     "tool_call": 'check_system_status(service_name="teams")'},
+    {"query": "OneDrive keeps showing a sync error and my files are not uploading",
+     "tool_call": 'lookup_knowledge_base(query="OneDrive sync error files not uploading troubleshoot reset")'},
+    {"query": "OneDrive is stuck syncing and not finishing",
+     "tool_call": 'lookup_knowledge_base(query="OneDrive stuck syncing cache reset sign out troubleshoot")'},
+    {"query": "None of us can print to the main office printer this morning",
+     "tool_call": 'check_system_status(service_name="printer")'},
+    {"query": "My laptop cannot find the office printer it was working last week",
+     "tool_call": 'lookup_knowledge_base(query="office printer not found driver install network printer troubleshoot")'},
+    {"query": "I can't install software on my own I need admin rights",
+     "tool_call": 'create_ticket(category="software", priority="low", summary="Software install request — requires admin elevation", user_email="<email>")'},
+
+    # ── NETWORK (extra variety) ───────────────────────────────────────────
+    {"query": "My Ethernet cable is plugged in but my laptop shows no network",
+     "tool_call": 'lookup_knowledge_base(query="Ethernet cable no network connection laptop troubleshoot")'},
+    {"query": "Browser says unable to connect to everything but ping works",
+     "tool_call": 'lookup_knowledge_base(query="browser proxy settings unable to connect network troubleshoot")'},
+    {"query": "How do I configure my VPN to use the new server address",
+     "tool_call": 'lookup_knowledge_base(query="VPN client configuration new server AnyConnect setup")'},
+    {"query": "The internet has been really slow for everyone in the building since lunch",
+     "tool_call": 'check_system_status(service_name="internet")'},
+
+    # ── AUTH (extra variety) ──────────────────────────────────────────────
+    {"query": "My password expired and I cannot log in",
+     "tool_call": 'reset_password(user_email="<email>", method="email")'},
+    {"query": "I lost my phone and cannot pass the MFA check I am locked out",
+     "tool_call": 'create_ticket(category="access", priority="high", summary="MFA bypass needed — user lost MFA device", user_email="<email>")'},
+    {"query": "The SSO login page is not loading for anyone in the office",
+     "tool_call": 'check_system_status(service_name="sso")'},
+
+    # ── SECURITY (extra variety) ──────────────────────────────────────────
+    {"query": "I found a USB stick plugged into my workstation that I did not put there",
+     "tool_call": ('create_ticket(category="security", priority="critical", '
+                   'summary="Suspicious USB device found in workstation", user_email="<email>") '
+                   '→ escalate_ticket(ticket_id="<id>", reason="Possible hardware implant or exfiltration device", escalate_to="security-team")')},
+    {"query": "I accidentally emailed a file with customer data to my personal Gmail",
+     "tool_call": ('create_ticket(category="security", priority="critical", '
+                   'summary="Data leak — customer data emailed to personal account", user_email="<email>") '
+                   '→ escalate_ticket(ticket_id="<id>", reason="Potential data breach — personal email exfiltration", escalate_to="security-team")')},
+    {"query": "There is a suspicious unknown process using 100% CPU on my computer",
+     "tool_call": 'lookup_knowledge_base(query="unknown suspicious process CPU usage malware check Task Manager")'},
+
+    # ── ACCESS (extra variety) ────────────────────────────────────────────
+    {"query": "I need write access to the Finance shared drive",
+     "tool_call": 'create_ticket(category="access", priority="medium", summary="Access request — Finance shared drive write access", user_email="<email>")'},
+    {"query": "I need read access to the production database for reporting",
+     "tool_call": 'create_ticket(category="access", priority="medium", summary="Database access request — production read access for reporting", user_email="<email>")'},
+    {"query": "I am travelling to Germany and need a VPN profile for that region",
+     "tool_call": 'create_ticket(category="access", priority="medium", summary="VPN profile request — Germany region for travel", user_email="<email>")'},
+
+    # ── STATUS (extra variety) ────────────────────────────────────────────
+    {"query": "Is Microsoft Teams having any issues right now",
+     "tool_call": 'check_system_status(service_name="teams")'},
+    {"query": "The ERP system is not loading for any of us in the finance team",
+     "tool_call": 'check_system_status(service_name="erp")'},
+    {"query": "Is there a known issue with the ERP today",
+     "tool_call": 'check_system_status(service_name="erp")'},
+
+    # ── USER INFO (extra variety) ─────────────────────────────────────────
+    {"query": "Can you look up my own account and what devices I am assigned",
+     "tool_call": 'get_user_info(user_email="<email>")'},
 ]
 
 # ── TF-IDF(Term Frequency–Inverse Document Frequency) selector ───────────────────────────────────────────────────────
